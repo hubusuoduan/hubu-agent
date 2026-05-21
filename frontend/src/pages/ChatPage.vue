@@ -89,18 +89,19 @@
               :auto-upload="false"
               :on-change="handleFileChange"
               :show-file-list="false"
-              accept=".txt,.md,.pdf,.docx,.html,.htm,.csv,.json"
+              accept=".txt,.md,.pdf,.docx,.html,.htm,.csv,.json,.xml,.xlsx,.pptx,.rtf"
             >
               <el-button size="default" :disabled="sending">
                 <el-icon><Upload /></el-icon>
                 上传文件
               </el-button>
             </el-upload>
-            <span class="tip-text">支持: txt, md, pdf, docx, html, csv, json</span>
+            <span class="tip-text">支持: txt, md, pdf, docx, html, csv, json, xml, xlsx, pptx, rtf</span>
           </div>
           <div class="action-right">
             <span class="tip-text">按 Ctrl+Enter 发送</span>
             <el-button 
+              v-if="!isGenerating"
               type="primary" 
               @click="sendMessage"
               :loading="sending"
@@ -109,6 +110,15 @@
             >
               <el-icon v-if="!sending"><Promotion /></el-icon>
               {{ sending ? '发送中...' : '发送' }}
+            </el-button>
+            <el-button 
+              v-else
+              type="danger" 
+              @click="stopGeneration"
+              class="stop-button"
+            >
+              <el-icon><CircleClose /></el-icon>
+              停止生成
             </el-button>
           </div>
         </div>
@@ -121,8 +131,8 @@
 import { ref, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ChatDotRound, Delete, User, Loading, Promotion, Service, SwitchButton, Document, Upload } from '@element-plus/icons-vue'
-import { sendMessage as sendApiMessage, sendStreamMessage, uploadFile } from '../apis/chat'
+import { ChatDotRound, Delete, User, Loading, Promotion, Service, SwitchButton, Document, Upload, CircleClose } from '@element-plus/icons-vue'
+import { sendMessage as sendApiMessage, sendStreamMessage, cancelStreamMessage, uploadFile } from '../apis/chat'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css'
@@ -171,6 +181,7 @@ const currentAiMessageIndex = ref<number>(-1) // 当前正在生成的 AI 消息
 const uploadedFile = ref<File | null>(null) // 上传的文件
 const fileContent = ref<string>('') // 文件解析后的内容
 const uploadingFile = ref(false) // 文件上传中
+const isGenerating = ref(false) // 是否正在生成响应
 
 // 获取当前时间
 function getCurrentTime(): string {
@@ -229,6 +240,7 @@ const sendMessage = async () => {
   
   inputMessage.value = ''
   sending.value = true
+  isGenerating.value = true
   scrollToBottom()
 
   try {
@@ -247,6 +259,7 @@ const sendMessage = async () => {
       // onComplete: 完成回调
       () => {
         sending.value = false
+        isGenerating.value = false
         currentAiMessageIndex.value = -1
         // 清除已上传的文件
         clearFile()
@@ -254,11 +267,17 @@ const sendMessage = async () => {
       },
       // onError: 错误回调
       (error: Error) => {
-        ElMessage.error(error.message || '发送消息失败')
-        console.error(error)
-        // 移除失败的 AI 消息
-        messages.value.splice(aiMessageIndex, 1)
+        // 如果是用户主动取消，显示不同提示
+        if (error.name === 'AbortError') {
+          ElMessage.info('已停止生成')
+        } else {
+          ElMessage.error(error.message || '发送消息失败')
+          console.error(error)
+          // 移除失败的 AI 消息
+          messages.value.splice(aiMessageIndex, 1)
+        }
         sending.value = false
+        isGenerating.value = false
         currentAiMessageIndex.value = -1
       }
     )
@@ -268,6 +287,17 @@ const sendMessage = async () => {
     // 移除失败的消息
     messages.value.splice(aiMessageIndex - 1, 2) // 移除用户消息和 AI 消息
     sending.value = false
+    isGenerating.value = false
+    currentAiMessageIndex.value = -1
+  }
+}
+
+// 停止生成
+function stopGeneration() {
+  if (isGenerating.value) {
+    cancelStreamMessage()
+    sending.value = false
+    isGenerating.value = false
     currentAiMessageIndex.value = -1
   }
 }
@@ -275,6 +305,15 @@ const sendMessage = async () => {
 // 处理文件选择
 async function handleFileChange(uploadFileItem: any) {
   if (!uploadFileItem.raw) return
+  
+  // 验证文件类型
+  const allowedExtensions = ['.txt', '.md', '.pdf', '.docx', '.html', '.htm', '.csv', '.json', '.xml', '.xlsx', '.pptx', '.rtf']
+  const fileExt = '.' + uploadFileItem.name.split('.').pop().toLowerCase()
+  
+  if (!allowedExtensions.includes(fileExt)) {
+    ElMessage.error(`不支持的文件类型: ${fileExt}。支持: ${allowedExtensions.join(', ')}`)
+    return
+  }
   
   uploadingFile.value = true
   uploadedFile.value = uploadFileItem.raw
@@ -537,6 +576,18 @@ function handleLogout() {
 .send-button:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.stop-button {
+  min-width: 100px;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.stop-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(245, 108, 108, 0.4);
 }
 
 /* 滚动条样式 */

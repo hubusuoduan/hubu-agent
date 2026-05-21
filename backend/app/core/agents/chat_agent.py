@@ -20,7 +20,18 @@ class ChatAgent:
             tools: 工具列表（可选）
         """
         self.model = model
-        self.system_prompt = system_prompt or "你是一个有用的AI助手。"
+        self.system_prompt = system_prompt or """你是一个智能助手Hubu Agent。
+
+你的特点:
+- 友好、专业、善于倾听
+- 回答准确、简洁、有条理
+- 支持多轮对话，能够记住对话历史中的关键信息（如用户名字、偏好等）
+- 如果用户在之前的对话中提到过个人信息，你应该在后续对话中合理使用这些信息
+
+注意事项:
+- 对话历史已经在messages中提供，你可以根据历史内容进行回复
+- 不要说"我无法保留对话历史"或"每次对话都是独立的"之类的话
+- 如果用户问你记得什么，可以根据历史消息回答"""
         self.tools = tools or []
         
         # 使用 create_react_agent 创建 Agent Executor
@@ -35,9 +46,11 @@ class ChatAgent:
         """
         执行 ChatAgent，处理用户输入
         
+        注意：历史消息的压缩现在由 Graph 的 history_manager_node 处理
+        
         Args:
             user_input: 用户输入
-            history: 历史消息列表，格式: [{"role": "user/assistant", "content": "..."}]
+            history: 历史消息列表（已压缩），格式: [{"role": "user/assistant", "content": "..."}]
             context: RAG检索的上下文信息（可选）
             
         Returns:
@@ -58,6 +71,9 @@ class ChatAgent:
                         messages.append(HumanMessage(content=msg["content"]))
                     elif msg.get("role") == "assistant":
                         messages.append(AIMessage(content=msg["content"]))
+                    elif msg.get("role") == "system":
+                        # system消息已经在agent_executor的prompt中处理
+                        pass
             messages.append(HumanMessage(content=user_input))
             
             # 执行 Agent
@@ -75,9 +91,11 @@ class ChatAgent:
         """
         流式执行 ChatAgent，处理用户输入
         
+        注意：历史消息的压缩现在由 Graph 的 history_manager_node 处理
+        
         Args:
             user_input: 用户输入
-            history: 历史消息列表，格式: [{"role": "user/assistant", "content": "..."}]
+            history: 历史消息列表（已压缩），格式: [{"role": "user/assistant", "content": "..."}]
             context: RAG检索的上下文信息（可选）
             
         Yields:
@@ -98,6 +116,8 @@ class ChatAgent:
                         messages.append(HumanMessage(content=msg["content"]))
                     elif msg.get("role") == "assistant":
                         messages.append(AIMessage(content=msg["content"]))
+                    elif msg.get("role") == "system":
+                        pass
             messages.append(HumanMessage(content=user_input))
             
             # 流式执行 Agent

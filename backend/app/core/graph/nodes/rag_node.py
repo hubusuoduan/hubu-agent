@@ -40,12 +40,10 @@ async def rag_node(state: ChatState) -> dict:
                 
                 logger.info(f"找到 {len(knowledge_ids)} 个知识库: {knowledge_ids}")
                 
-                # 2. 执行 RAG 检索（自动在所有知识库中搜索）
+                # 2. 执行 RAG 检索（自动在所有知识库中搜索，使用配置中的默认参数）
                 context = await RagHandler.query(
                     query=user_input,
-                    knowledge_ids=knowledge_ids,
-                    top_k=5,
-                    min_score=0.3
+                    knowledge_ids=knowledge_ids
                 )
                 
                 # 3. 处理检索结果
@@ -53,7 +51,7 @@ async def rag_node(state: ChatState) -> dict:
                     logger.info(f"RAG 节点检索成功，context 长度: {len(context)}")
                     return {"context": context}
                 else:
-                    logger.info("RAG 节点未检索到相关文档")
+                    logger.warning("RAG 节点未检索到相关文档，将使用纯对话模式")
                     return {"context": None}
                     
             finally:

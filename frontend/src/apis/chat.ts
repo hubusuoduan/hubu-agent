@@ -17,6 +17,9 @@ export const sendMessage = (data: ChatMessage) => {
   return request.post<ChatResponse>('/chat/message', data)
 }
 
+// 用于取消流式请求的控制器
+let abortController: AbortController | null = null
+
 // 发送流式聊天消息
 export const sendStreamMessage = async (
   data: ChatMessage,
@@ -25,6 +28,9 @@ export const sendStreamMessage = async (
   onError: (error: Error) => void
 ) => {
   try {
+    // 创建新的 AbortController
+    abortController = new AbortController()
+    
     const token = getAccessToken()
     
     const response = await fetchWithTokenRefresh('/api/v1/chat/stream-message', {
@@ -33,7 +39,8 @@ export const sendStreamMessage = async (
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
+      signal: abortController.signal // 添加中止信号
     })
 
     if (!response.ok) {
@@ -87,7 +94,22 @@ export const sendStreamMessage = async (
       }
     }
   } catch (error) {
+    // 如果是用户主动取消,不报错
+    if ((error as Error).name === 'AbortError') {
+      console.log('流式请求已取消')
+      return
+    }
     onError(error as Error)
+  } finally {
+    abortController = null
+  }
+}
+
+// 取消流式请求
+export const cancelStreamMessage = () => {
+  if (abortController) {
+    abortController.abort()
+    abortController = null
   }
 }
 

@@ -2,10 +2,11 @@
 from typing import List, Optional
 from loguru import logger
 
+from app.config import settings
 from app.services.rag.embedding import get_embedding
 from app.services.rag.vector_store import vector_store
 from app.services.rag.reranker import reranker, RerankedDocument
-from app.services.rag.doc_parser import SimpleDocParser
+from app.utils.doc_parser import SimpleDocParser
 
 
 class RagHandler:
@@ -68,27 +69,39 @@ class RagHandler:
             return []
     
     @classmethod
-    async def query(cls, query: str, knowledge_ids: List[str], top_k: int = 5, min_score: float = 0.3) -> str:
+    async def query(cls, query: str, knowledge_ids: List[str], top_k: int = None, min_score: float = None) -> str:
         """
         RAG查询
         
         Args:
             query: 查询文本
             knowledge_ids: 知识库ID列表
-            top_k: 返回结果数量
-            min_score: 最小分数阈值
+            top_k: 每个知识库返回结果数量(默认从配置读取)
+            min_score: 最小分数阈值(默认从配置读取)
             
         Returns:
             检索到的相关文档内容
         """
+        # 使用配置中的默认值
+        if top_k is None:
+            top_k = settings.RAG_TOP_K
+        if min_score is None:
+            min_score = settings.RAG_MIN_SCORE
+            
+        logger.info(f"开始RAG查询: query长度={len(query)}, 知识库数量={len(knowledge_ids)}, top_k={top_k}, min_score={min_score}")
+        
         # 1. 获取查询向量
         query_embedding = await get_embedding(query)
+        logger.debug(f"查询向量维度: {len(query_embedding)}")
         
         # 2. 从每个知识库检索文档
         all_documents = []
         for knowledge_id in knowledge_ids:
             docs = await vector_store.search(query_embedding, knowledge_id, top_k=top_k)
+            logger.debug(f"知识库 {knowledge_id} 检索到 {len(docs)} 个文档")
             all_documents.extend(docs)
+        
+        logger.info(f"总计检索到 {len(all_documents)} 个文档(未去重)")
         
         # 3. 按分数排序并去重
         all_documents.sort(key=lambda x: x.get("score", 0), reverse=True)
@@ -100,21 +113,36 @@ class RagHandler:
                 seen_chunk_ids.add(chunk_id)
                 unique_docs.append(doc)
         
-        # 4. 重排序
-        doc_contents = [doc.get("content", "") for doc in unique_docs[:10]]  # 最多取10个文档进行重排序
+        logger.info(f"去重后剩余 {len(unique_docs)} 个唯一文档")
+        
+        # 4. 重排序(传入元数据)
+        reranker_top_n = settings.RAG_RERANKER_TOP_N
+        doc_contents = [doc.get("content", "") for doc in unique_docs[:reranker_top_n]]  # 从配置读取重排序数量
+        doc_metadata = [{"chunk_id": doc.get("chunk_id"), "file_name": doc.get("file_name")} for doc in unique_docs[:reranker_top_n]]
+        
         if not doc_contents:
+            logger.warning("未检索到任何文档")
             return "未找到相关文档。"
         
-        reranked_docs = await reranker.rerank_documents(query, doc_contents)
+        reranked_docs = await reranker.rerank_documents(query, doc_contents, doc_metadata)
         
         # 5. 过滤低分数结果并拼接
         filtered_results = [doc for doc in reranked_docs if doc.score >= min_score]
         
         if not filtered_results:
+            logger.warning(f"所有文档分数低于阈值 {min_score}")
             return "未找到相关文档。"
         
         final_result = "\n\n".join(result.content for result in filtered_results)
-        logger.info(f"RAG查询完成，返回 {len(filtered_results)} 个相关文档")
+        
+        # 记录检索效果
+        logger.info(f"RAG查询完成: "
+                   f"检索={len(all_documents)}, "
+                   f"去重={len(unique_docs)}, "
+                   f"重排序后={len(reranked_docs)}, "
+                   f"过滤后={len(filtered_results)}, "
+                   f"最终长度={len(final_result)}")
+        
         return final_result
     
     @classmethod

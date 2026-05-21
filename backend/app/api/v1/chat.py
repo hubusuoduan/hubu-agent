@@ -45,14 +45,22 @@ async def upload_file(
     """
     try:
         # 支持的扩展名
-        allowed_extensions = {'.txt', '.md', '.pdf', '.docx', '.html', '.htm', '.csv', '.json'}
+        allowed_extensions = {
+            '.txt', '.md', '.pdf', '.docx',  # 文本文档
+            '.html', '.htm',  # 网页文件
+            '.csv', '.json', '.xml',  # 数据文件
+            '.xlsx',  # Excel表格
+            '.pptx',  # PowerPoint演示文稿
+            '.rtf',  # 富文本格式
+        }
         # os.path.splitext 返回 (filename, extension), [1] 是扩展名
         file_ext = os.path.splitext(file.filename)[1].lower()
         
         if file_ext not in allowed_extensions:
+            supported_formats = ', '.join(sorted(allowed_extensions))
             raise HTTPException(
                 status_code=400, 
-                detail=f"不支持的文件类型。支持: {', '.join(allowed_extensions)}"
+                detail=f"不支持的文件类型: {file_ext}。支持格式: {supported_formats}"
             )
         
         # 创建临时文件
@@ -64,7 +72,7 @@ async def upload_file(
         
         try:
             # 使用文档解析器解析文件
-            from app.services.rag.doc_parser import SimpleDocParser
+            from app.utils.doc_parser import SimpleDocParser
             
             chunks = SimpleDocParser.parse_file(tmp_file_path)
             

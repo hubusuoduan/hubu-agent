@@ -6,6 +6,7 @@ from loguru import logger
 from app.core.graph.state import ChatState
 from app.core.graph.nodes.chat_agent_node import chat_agent_node, stream_chat_agent_node
 from app.core.graph.nodes.rag_node import rag_node
+from app.core.graph.nodes.history_node import history_manager_node
 
 
 def create_chat_graph() -> StateGraph:
@@ -20,17 +21,19 @@ def create_chat_graph() -> StateGraph:
     
     # 添加节点
     workflow.add_node("rag", rag_node)
+    workflow.add_node("history_manager", history_manager_node)
     workflow.add_node("chat_agent", chat_agent_node)
     
-    # 设置执行流程：START -> rag -> chat_agent -> END
+    # 设置执行流程：START -> rag -> history_manager -> chat_agent -> END
     workflow.add_edge(START, "rag")
-    workflow.add_edge("rag", "chat_agent")
+    workflow.add_edge("rag", "history_manager")
+    workflow.add_edge("history_manager", "chat_agent")
     workflow.add_edge("chat_agent", END)
     
     # 编译 Graph
     graph = workflow.compile()
     
-    logger.info("Chat Graph 创建成功（包含 RAG 节点）")
+    logger.info("Chat Graph 创建成功（包含 RAG 节点和历史管理节点）")
     return graph
 
 
@@ -46,17 +49,19 @@ def create_stream_chat_graph() -> StateGraph:
     
     # 添加节点
     workflow.add_node("rag", rag_node)
+    workflow.add_node("history_manager", history_manager_node)
     workflow.add_node("stream_chat_agent", stream_chat_agent_node)
     
-    # 设置执行流程：START -> rag -> stream_chat_agent -> END
+    # 设置执行流程：START -> rag -> history_manager -> stream_chat_agent -> END
     workflow.add_edge(START, "rag")
-    workflow.add_edge("rag", "stream_chat_agent")
+    workflow.add_edge("rag", "history_manager")
+    workflow.add_edge("history_manager", "stream_chat_agent")
     workflow.add_edge("stream_chat_agent", END)
     
     # 编译 Graph
     graph = workflow.compile()
     
-    logger.info("流式 Chat Graph 创建成功（包含 RAG 节点）")
+    logger.info("流式 Chat Graph 创建成功（包含 RAG 节点和历史管理节点）")
     return graph
 
 

@@ -5,7 +5,7 @@ from pathlib import Path
 # 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).parent))
 
-from app.services.rag.doc_parser import SimpleDocParser
+from app.utils.doc_parser import SimpleDocParser
 import tempfile
 import os
 

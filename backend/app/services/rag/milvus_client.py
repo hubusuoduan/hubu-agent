@@ -114,9 +114,20 @@ class VectorDBClient:
             logger.error(f"插入数据到集合 '{collection_name}' 失败: {e}")
             return False
     
-    async def search(self, query_embedding: List[float], collection_name: str, top_k: int = 5) -> List[dict]:
+    async def search(self, query_embedding: List[float], collection_name: str, top_k: int = 8) -> List[dict]:
         """在集合中搜索相似数据"""
         try:
+            # 搜索参数(从配置读取)
+            nprobe = settings.MILVUS_NPROBE
+            search_params = {
+                "metric_type": "L2",  # L2距离
+                "params": {
+                    "nprobe": nprobe  # 从配置读取
+                }
+            }
+            
+            logger.debug(f"搜索集合 {collection_name}, top_k={top_k}, nprobe={nprobe}")
+            
             # 搜索
             results = self.client.search(
                 collection_name=collection_name,
@@ -124,23 +135,28 @@ class VectorDBClient:
                 anns_field="embedding",
                 limit=top_k,
                 output_fields=["content", "chunk_id", "file_id", "file_name", "knowledge_id"],
-                search_params={
-                    "metric_type": "L2",
-                    "params": {"nprobe": 16}
-                }
+                search_params=search_params
             )
             
             # 整理结果
             documents = []
             for hit in results[0]:
+                # L2距离越小越相似,转换为相似度分数(0-1)
+                distance = hit['distance']
+                # 分数转换: score = 1 / (1 + distance)
+                score = 1.0 / (1.0 + distance)
+                
                 documents.append({
                     "content": hit['entity'].get('content'),
                     "chunk_id": hit['entity'].get('chunk_id'),
                     "file_id": hit['entity'].get('file_id'),
                     "file_name": hit['entity'].get('file_name'),
                     "knowledge_id": hit['entity'].get('knowledge_id'),
-                    "score": hit['distance']
+                    "score": score,  # 使用转换后的分数
+                    "distance": distance  # 保留原始距离
                 })
+            
+            logger.debug(f"检索到 {len(documents)} 个结果, 最高分: {documents[0]['score']:.3f}" if documents else "未检索到结果")
             
             return documents
         

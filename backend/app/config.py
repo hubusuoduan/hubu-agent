@@ -35,6 +35,16 @@ class Settings(BaseSettings):
     LLM_BASE_URL: str = "https://api.openai.com/v1"
     LLM_MODEL: str = "gpt-3.5-turbo"
     
+    # 对话历史管理配置
+    MAX_HISTORY_ROUNDS: int = 10  # 最大保留对话轮数
+    ENABLE_HISTORY_SUMMARY: bool = True  # 是否启用历史摘要
+    SUMMARY_THRESHOLD: int = 20  # 触发摘要的消息条数阈值
+    
+    # 上下文长度控制配置
+    MAX_CONTEXT_TOKENS: int = 8000  # 最大上下文token数
+    RESERVE_FOR_RESPONSE: int = 2000  # 预留响应token数
+    ENABLE_TOKEN_CONTROL: bool = True  # 是否启用token控制
+    
     # Embedding配置
     EMBEDDING_API_KEY: str = ""
     EMBEDDING_MODEL: str = "text-embedding-v3"
@@ -45,6 +55,13 @@ class Settings(BaseSettings):
     MILVUS_USER: str = ""
     MILVUS_PASSWORD: str = ""
     EMBEDDING_DIMENSION: int = 1024
+    MILVUS_NPROBE: int = 32  # 向量检索时搜索的聚类中心数量
+    
+    # RAG检索配置
+    RAG_TOP_K: int = 8  # 每个知识库检索的文档数量
+    RAG_MIN_SCORE: float = 0.2  # 最小分数阈值
+    RAG_RERANKER_TOP_N: int = 15  # 参与重排序的文档数量
+    RAG_HYBRID_WEIGHTS: str = "0.4,0.6"  # BM25权重,语义权重(逗号分隔)
     
     # 工具配置
     WEATHER_API_KEY: str = ""  # 高德天气API Key

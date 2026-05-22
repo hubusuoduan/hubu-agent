@@ -1,5 +1,4 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from typing import Optional, List
 from loguru import logger
 import json
@@ -8,27 +7,15 @@ import tempfile
 
 from app.core.graph.graph import run_chat_graph, run_stream_chat_graph
 from app.database.dao.history_dao import HistoryDao
+from app.database.dao.dialog_dao import DialogDao
 from app.database.session import get_async_session
 from sqlmodel.ext.asyncio.session import AsyncSession
-from fastapi import Depends
 from app.api.dependencies import get_current_user
 from app.database.models.user import User
+from app.schemas.chat import ChatMessage, ChatResponse
 from fastapi.responses import StreamingResponse
 
 router = APIRouter()
-
-
-class ChatMessage(BaseModel):
-    """聊天消息模型"""
-    message: str
-    session_id: Optional[str] = None
-    file_content: Optional[str] = None  # 文件解析后的内容
-
-
-class ChatResponse(BaseModel):
-    """聊天响应模型"""
-    response: str
-    session_id: str
 
 
 @router.post("/upload-file", summary="上传并解析文件")
@@ -38,9 +25,9 @@ async def upload_file(
 ):
     """
     上传文件并解析内容
-    
+
     - **file**: 上传的文件
-    
+
     返回解析后的文本内容
     """
     try:
@@ -55,49 +42,49 @@ async def upload_file(
         }
         # os.path.splitext 返回 (filename, extension), [1] 是扩展名
         file_ext = os.path.splitext(file.filename)[1].lower()
-        
+
         if file_ext not in allowed_extensions:
             supported_formats = ', '.join(sorted(allowed_extensions))
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail=f"不支持的文件类型: {file_ext}。支持格式: {supported_formats}"
             )
-        
+
         # 创建临时文件
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
             # 读取上传的文件内容
             content = await file.read()
             tmp_file.write(content)
             tmp_file_path = tmp_file.name
-        
+
         try:
             # 使用文档解析器解析文件
             from app.utils.doc_parser import SimpleDocParser
-            
+
             chunks = SimpleDocParser.parse_file(tmp_file_path)
-            
+
             if not chunks:
                 raise HTTPException(status_code=400, detail="文件解析失败或文件为空")
-            
+
             # 合并所有文本块
             full_content = "\n\n".join(chunks)
-            
+
             logger.info(f"文件 {file.filename} 解析成功，共 {len(chunks)} 个文本块，{len(full_content)} 字符")
-            
+
             return {
                 "filename": file.filename,
                 "content": full_content,
                 "chunks_count": len(chunks),
                 "total_length": len(full_content)
             }
-            
+
         finally:
             # 删除临时文件
             try:
                 os.remove(tmp_file_path)
             except:
                 pass
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -113,32 +100,45 @@ async def send_message(
 ):
     """
     发送聊天消息（需要认证）
-    
+
     - **message**: 用户发送的消息
-    - **session_id**: 会话ID（可选）
-    
-    返回AI的回复和会话ID
+    - **dialog_id**: 对话ID（可选，为空则自动创建新对话）
+
+    返回AI的回复和对话ID
     """
     try:
-        session_id = chat_message.session_id or "default_session"
-        
+        # 获取或创建对话
+        dialog_id = chat_message.dialog_id
+        if not dialog_id:
+            # 自动创建新对话，用消息前20字作为名称
+            name = chat_message.message[:20] + ("..." if len(chat_message.message) > 20 else "")
+            dialog = await DialogDao.create_dialog(name=name, user_id=current_user.id)
+            dialog_id = dialog.dialog_id
+        else:
+            # 校验对话存在且属于当前用户
+            dialog = await DialogDao.get_dialog_by_id(dialog_id)
+            if not dialog:
+                raise HTTPException(status_code=404, detail="对话不存在")
+            if dialog.user_id != current_user.id:
+                raise HTTPException(status_code=403, detail="无权访问该对话")
+
         # 保存用户消息到数据库（包含文件信息）
         try:
             db_content = chat_message.message
             if chat_message.file_content:
                 db_content = f"[上传了文件]\n{chat_message.message}"
             await HistoryDao.create_history(
-                dialog_id=session_id,
+                dialog_id=dialog_id,
                 role="user",
                 content=db_content
             )
         except Exception as db_error:
             logger.warning(f"保存用户消息失败: {db_error}")
-        
+
         # 加载历史消息（最近10条）并转换为 LangChain 消息格式
         try:
             histories = await HistoryDao.get_recent_messages(
-                dialog_id=session_id,
+                dialog_id=dialog_id,
                 k=10
             )
             from langchain_core.messages import HumanMessage, AIMessage
@@ -151,36 +151,37 @@ async def send_message(
         except Exception as db_error:
             logger.warning(f"加载历史消息失败: {db_error}")
             messages = []
-        
+
         # 构建用户输入（包含文件内容）
         user_input = chat_message.message
         if chat_message.file_content:
             user_input = f"以下是文件内容：\n\n{chat_message.file_content}\n\n---\n\n{chat_message.message}"
-        
-        # 运行 Chat Graph（RAG 节点会自动检索所有知识库）
+
+        # 运行 Chat Graph（RAG 节点会自动检索所有知识库，记忆节点会检索用户长期记忆）
         graph_result = await run_chat_graph(
             user_input=user_input,
-            session_id=session_id,
+            session_id=dialog_id,
+            user_id=current_user.id,
             messages=messages
         )
-        
+
         response_text = graph_result.get("response", "")
-        
+
         # 保存AI回复到数据库
         try:
             await HistoryDao.create_history(
-                dialog_id=session_id,
+                dialog_id=dialog_id,
                 role="assistant",
                 content=response_text
             )
         except Exception as db_error:
             logger.warning(f"保存AI回复失败: {db_error}")
-        
+
         return ChatResponse(
             response=response_text,
-            session_id=session_id
+            dialog_id=dialog_id
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -196,32 +197,45 @@ async def send_stream_message(
 ):
     """
     发送聊天消息（流式输出，需要认证）
-    
+
     - **message**: 用户发送的消息
-    - **session_id**: 会话ID（可选）
-    
+    - **dialog_id**: 对话ID（可选，为空则自动创建新对话）
+
     以 SSE 格式流式返回 AI 的回复
     """
     try:
-        session_id = chat_message.session_id or "default_session"
-        
+        # 获取或创建对话
+        dialog_id = chat_message.dialog_id
+        if not dialog_id:
+            # 自动创建新对话，用消息前20字作为名称
+            name = chat_message.message[:20] + ("..." if len(chat_message.message) > 20 else "")
+            dialog = await DialogDao.create_dialog(name=name, user_id=current_user.id)
+            dialog_id = dialog.dialog_id
+        else:
+            # 校验对话存在且属于当前用户
+            dialog = await DialogDao.get_dialog_by_id(dialog_id)
+            if not dialog:
+                raise HTTPException(status_code=404, detail="对话不存在")
+            if dialog.user_id != current_user.id:
+                raise HTTPException(status_code=403, detail="无权访问该对话")
+
         # 保存用户消息到数据库（包含文件信息）
         try:
             db_content = chat_message.message
             if chat_message.file_content:
                 db_content = f"[上传了文件]\n{chat_message.message}"
             await HistoryDao.create_history(
-                dialog_id=session_id,
+                dialog_id=dialog_id,
                 role="user",
                 content=db_content
             )
         except Exception as db_error:
             logger.warning(f"保存用户消息失败: {db_error}")
-        
+
         # 加载历史消息（最近10条）并转换为 LangChain 消息格式
         try:
             histories = await HistoryDao.get_recent_messages(
-                dialog_id=session_id,
+                dialog_id=dialog_id,
                 k=10
             )
             from langchain_core.messages import HumanMessage, AIMessage
@@ -234,12 +248,12 @@ async def send_stream_message(
         except Exception as db_error:
             logger.warning(f"加载历史消息失败: {db_error}")
             messages = []
-        
+
         # 构建用户输入（包含文件内容）
         user_input = chat_message.message
         if chat_message.file_content:
             user_input = f"以下是文件内容：\n\n{chat_message.file_content}\n\n---\n\n{chat_message.message}"
-        
+
         # 定义异步生成器函数 - 使用封装的 run_stream_chat_graph
         async def generate_stream():
             full_response = ""
@@ -247,34 +261,36 @@ async def send_stream_message(
                 # 使用封装好的流式 Graph 函数
                 async for chunk in run_stream_chat_graph(
                     user_input=user_input,
-                    session_id=session_id,
+                    session_id=dialog_id,
+                    user_id=current_user.id,
                     messages=messages
                 ):
                     full_response += chunk
                     data = json.dumps({"content": chunk}, ensure_ascii=False)
                     yield f"data: {data}\n\n"
-                
+
                 # 保存完整的 AI 回复到数据库
                 try:
                     await HistoryDao.create_history(
-                        dialog_id=session_id,
+                        dialog_id=dialog_id,
                         role="assistant",
                         content=full_response
                     )
                 except Exception as db_error:
                     logger.warning(f"保存AI回复失败: {db_error}")
-                
+
                 logger.info(f"流式输出完成，总长度: {len(full_response)}")
-                # 发送结束标记
-                yield "data: [DONE]\n\n"
-                
+                # 发送结束标记，附带 dialog_id
+                done_data = json.dumps({"done": True, "dialog_id": dialog_id}, ensure_ascii=False)
+                yield f"data: {done_data}\n\n"
+
             except Exception as e:
                 logger.error(f"流式处理消息失败: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
                 error_data = json.dumps({"error": str(e)}, ensure_ascii=False)
                 yield f"data: {error_data}\n\n"
-        
+
         return StreamingResponse(
             generate_stream(),
             media_type="text/event-stream",
@@ -284,7 +300,7 @@ async def send_stream_message(
                 "X-Accel-Buffering": "no"  # 禁用 Nginx 缓冲
             }
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -292,25 +308,32 @@ async def send_stream_message(
         raise HTTPException(status_code=500, detail=f"处理流式消息失败: {str(e)}")
 
 
-@router.get("/history/{session_id}", summary="获取聊天历史")
+@router.get("/history/{dialog_id}", summary="获取聊天历史")
 async def get_chat_history(
-    session_id: str,
+    dialog_id: str,
     limit: int = 50,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session)
 ):
     """
     获取聊天历史（需要认证）
-    
-    - **session_id**: 会话ID
+
+    - **dialog_id**: 对话ID
     - **limit**: 限制返回数量（默认50）
     """
     try:
+        # 校验对话存在且属于当前用户
+        dialog = await DialogDao.get_dialog_by_id(dialog_id)
+        if not dialog:
+            raise HTTPException(status_code=404, detail="对话不存在")
+        if dialog.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="无权访问该对话")
+
         histories = await HistoryDao.get_history_by_dialog_id(
-            dialog_id=session_id,
+            dialog_id=dialog_id,
             limit=limit
         )
-        
+
         messages = [
             {
                 "role": h.role,
@@ -319,18 +342,18 @@ async def get_chat_history(
             }
             for h in histories
         ]
-        
+
         return {
-            "session_id": session_id,
+            "dialog_id": dialog_id,
             "messages": messages,
             "total": len(messages)
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"获取聊天历史失败: {e}")
         return {
-            "session_id": session_id,
+            "dialog_id": dialog_id,
             "messages": [],
             "total": 0
         }
-
-

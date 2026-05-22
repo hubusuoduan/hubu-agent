@@ -63,6 +63,13 @@ class Settings(BaseSettings):
     RAG_RERANKER_TOP_N: int = 15  # 参与重排序的文档数量
     RAG_HYBRID_WEIGHTS: str = "0.4,0.6"  # BM25权重,语义权重(逗号分隔)
     
+    # 长期记忆配置
+    MEMORY_TOP_K: int = 5  # 记忆检索返回的最大数量
+    MEMORY_MIN_SCORE: float = 0.3  # 记忆检索最低相似度阈值
+
+    # Agent配置
+    AGENT_MAX_ITERATIONS: int = 10  # Agent最大工具调用轮数，防止死循环
+
     # 工具配置
     WEATHER_API_KEY: str = ""  # 高德天气API Key
     WEATHER_API_ENDPOINT: str = "https://restapi.amap.com/v3/weather/weatherInfo"

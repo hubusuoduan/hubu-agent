@@ -4,7 +4,7 @@ from sqlmodel import SQLModel
 from loguru import logger
 
 from app.database.engine import engine, async_engine
-from app.database.models import DialogTable, HistoryTable, KnowledgeTable, KnowledgeFileTable
+from app.database.models import DialogTable, HistoryTable, KnowledgeTable, KnowledgeFileTable, ReportTable, User
 
 
 async def init_db():

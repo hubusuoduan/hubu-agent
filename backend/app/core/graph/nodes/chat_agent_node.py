@@ -115,19 +115,21 @@ async def stream_chat_agent_node(state: dict, writer: StreamWriter) -> dict:
         agent = get_or_create_agent(state.get("session_id", "default"))
         
         # 流式执行 ChatAgent，并通过 writer 发送数据
+        full_response = ""
         async for chunk in agent.stream_run(
             user_input=user_input,
             history=history if history else None,
             context=context
         ):
             if chunk:
+                full_response += chunk
                 # 使用 writer 发送自定义数据
                 writer(chunk)
         
-        logger.info(f"流式 ChatAgent 节点执行完成")
+        logger.info(f"流式 ChatAgent 节点执行完成，回复长度: {len(full_response)}")
         
-        # 返回空字典，因为数据已经通过 writer 发送
-        return {}
+        # 返回完整的 response，供后续节点（如 memory_extract）使用
+        return {"response": full_response}
         
     except Exception as e:
         logger.error(f"流式 ChatAgent 节点执行失败: {e}")

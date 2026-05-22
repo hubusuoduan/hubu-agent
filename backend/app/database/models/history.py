@@ -3,7 +3,7 @@ from sqlmodel import Field, SQLModel
 from typing import Optional, List
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, DateTime, Text, JSON, text
+from sqlalchemy import Column, DateTime, Text, JSON, text, String
 
 from app.database.models.base import BaseModel
 
@@ -19,8 +19,9 @@ class HistoryTable(BaseModel, table=True):
         description="消息ID"
     )
     dialog_id: str = Field(
-        max_length=100,
-        description="对话ID"
+        max_length=255,
+        sa_column=Column(String(255), nullable=False, index=True),
+        description="对话ID，逻辑关联dialog表"
     )
     role: str = Field(
         max_length=20,
@@ -34,3 +35,4 @@ class HistoryTable(BaseModel, table=True):
         default=0,
         description="Token使用量"
     )
+

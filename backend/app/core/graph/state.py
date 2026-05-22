@@ -18,4 +18,5 @@ class ChatState(TypedDict):
     user_input: str
     context: Optional[str]
     session_id: str
+    user_id: str
     response: str

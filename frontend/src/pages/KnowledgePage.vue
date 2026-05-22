@@ -77,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, Upload, FolderOpened } from '@element-plus/icons-vue'
 import {
@@ -96,10 +96,10 @@ const createForm = ref({
   description: ''
 })
 
-// 上传请求头
-const uploadHeaders = {
+// 上传请求头（动态获取token，避免token刷新后仍使用旧token）
+const uploadHeaders = computed(() => ({
   Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`
-}
+}))
 
 // 加载知识库列表
 async function loadKnowledgeList() {

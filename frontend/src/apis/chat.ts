@@ -156,11 +156,6 @@ export const cancelStreamMessage = () => {
   }
 }
 
-// 获取聊天历史
-export const getChatHistory = (dialogId: string) => {
-  return request.get(`/chat/history/${dialogId}`)
-}
-
 // 上传并解析文件
 export const uploadFile = async (file: File) => {
   const formData = new FormData()
@@ -189,8 +184,6 @@ export const uploadFile = async (file: File) => {
 export interface DialogInfo {
   dialog_id: string
   name: string
-  user_id: number | null
-  summary: string | null
   create_time: string | null
   update_time: string | null
 }

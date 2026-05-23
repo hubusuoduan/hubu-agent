@@ -15,6 +15,27 @@ from app.auth.config import AuthConfig
 router = APIRouter(prefix="/report", tags=["报告"])
 
 
+@router.get("/info/{report_id}", summary="获取报告信息")
+async def get_report_info(
+    report_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """获取报告文件信息（需要认证）"""
+    report = await session.get(ReportTable, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="报告不存在")
+    return {
+        "id": report.id,
+        "title": report.title,
+        "file_name": report.file_name,
+        "file_format": report.file_format,
+        "file_size": report.file_size,
+        "status": report.status,
+        "create_time": report.create_time.strftime("%Y-%m-%d %H:%M:%S") if report.create_time else None,
+    }
+
+
 @router.get("/download/{report_id}", summary="下载报告文件")
 async def download_report(
     report_id: str,

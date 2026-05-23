@@ -9,7 +9,7 @@ from app.core.graph.nodes.chat_agent_node import chat_agent_node, stream_chat_ag
 from app.core.graph.nodes.rag_node import rag_node
 from app.core.graph.nodes.history_node import history_manager_node
 from app.core.graph.nodes.memory_node import memory_node
-from app.core.graph.nodes.memory_extract_node import memory_extract_node
+
 
 
 # 节点显示名称映射
@@ -19,11 +19,10 @@ NODE_DISPLAY_NAMES = {
     "history_manager": "历史管理",
     "chat_agent": "对话 Agent",
     "stream_chat_agent": "对话 Agent",
-    "memory_extract": "记忆提取",
 }
 
 # 节点执行顺序定义（用于前端流程图渲染）
-NODE_EXECUTION_ORDER = ["rag", "memory", "history_manager", "stream_chat_agent", "memory_extract"]
+NODE_EXECUTION_ORDER = ["rag", "memory", "history_manager", "stream_chat_agent"]
 
 
 def _summarize_node_input(node_name: str, state: dict) -> str:
@@ -40,9 +39,6 @@ def _summarize_node_input(node_name: str, state: dict) -> str:
             return f"消息数: {msg_count}"
         elif node_name in ("chat_agent", "stream_chat_agent"):
             return f"输入: {user_input[:50]}" if user_input else "无输入"
-        elif node_name == "memory_extract":
-            resp = state.get("response", "")
-            return f"回复长度: {len(resp)}" if resp else "无回复"
         return ""
     except Exception:
         return ""
@@ -67,8 +63,6 @@ def _summarize_node_output(node_name: str, output: dict) -> str:
         elif node_name in ("chat_agent", "stream_chat_agent"):
             resp = output.get("response", "")
             return f"回复长度: {len(resp)}" if resp else "无回复"
-        elif node_name == "memory_extract":
-            return "记忆提取完成"
         return ""
     except Exception:
         return ""
@@ -87,14 +81,12 @@ def create_chat_graph() -> StateGraph:
     workflow.add_node("memory", memory_node)
     workflow.add_node("history_manager", history_manager_node)
     workflow.add_node("chat_agent", chat_agent_node)
-    workflow.add_node("memory_extract", memory_extract_node)
 
     workflow.add_edge(START, "rag")
     workflow.add_edge("rag", "memory")
     workflow.add_edge("memory", "history_manager")
     workflow.add_edge("history_manager", "chat_agent")
-    workflow.add_edge("chat_agent", "memory_extract")
-    workflow.add_edge("memory_extract", END)
+    workflow.add_edge("chat_agent", END)
 
     graph = workflow.compile()
     logger.info("Chat Graph 创建成功（包含 RAG 节点、长期记忆节点和历史管理节点）")
@@ -114,14 +106,12 @@ def create_stream_chat_graph() -> StateGraph:
     workflow.add_node("memory", memory_node)
     workflow.add_node("history_manager", history_manager_node)
     workflow.add_node("stream_chat_agent", stream_chat_agent_node)
-    workflow.add_node("memory_extract", memory_extract_node)
 
     workflow.add_edge(START, "rag")
     workflow.add_edge("rag", "memory")
     workflow.add_edge("memory", "history_manager")
     workflow.add_edge("history_manager", "stream_chat_agent")
-    workflow.add_edge("stream_chat_agent", "memory_extract")
-    workflow.add_edge("memory_extract", END)
+    workflow.add_edge("stream_chat_agent", END)
 
     graph = workflow.compile()
     logger.info("流式 Chat Graph 创建成功（包含 RAG 节点、长期记忆节点和历史管理节点）")
@@ -248,7 +238,7 @@ async def run_stream_chat_graph_with_trace(
     node_timings: Dict[str, float] = {}  # 记录每个节点的开始时间
     completed_nodes: list = []  # 已完成的节点列表
     # 跟踪上一个完成的节点，用于推断当前正在执行的节点
-    node_order = ["rag", "memory", "history_manager", "stream_chat_agent", "memory_extract"]
+    node_order = ["rag", "memory", "history_manager", "stream_chat_agent"]
     last_completed_index = -1
 
     try:

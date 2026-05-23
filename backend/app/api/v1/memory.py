@@ -17,11 +17,35 @@ router = APIRouter(prefix="/memory", tags=["长期记忆"])
 
 @router.get("/", response_model=MemoryListResponse, summary="获取用户记忆列表")
 async def list_memories(
+    page: int = 1,
+    page_size: int = 20,
+    keyword: Optional[str] = None,
+    memory_type: Optional[str] = None,
     current_user: User = Depends(get_current_user)
 ):
-    """获取当前用户的所有长期记忆"""
+    """获取当前用户的长期记忆（支持分页和搜索）
+
+    Args:
+        page: 页码，从1开始
+        page_size: 每页数量
+        keyword: 搜索关键词
+        memory_type: 按类型筛选（preference/fact/insight）
+    """
+    if page < 1:
+        page = 1
+    if page_size < 1 or page_size > 100:
+        page_size = 20
+
+    offset = (page - 1) * page_size
+
     memory_service = get_memory_service()
-    results = await memory_service.list_memories(user_id=current_user.id, limit=200)
+    result = await memory_service.list_memories(
+        user_id=current_user.id,
+        limit=page_size,
+        offset=offset,
+        keyword=keyword or "",
+        memory_type=memory_type or ""
+    )
 
     items = [
         MemoryResponse(
@@ -29,12 +53,13 @@ async def list_memories(
             content=m.get("content", ""),
             memory_type=m.get("memory_type", "fact"),
             source_dialog_id=m.get("source_dialog_id", ""),
-            created_at=m.get("created_at")
+            created_at=m.get("created_at"),
+            importance=m.get("importance", 3)
         )
-        for m in results
+        for m in result.get("items", [])
     ]
 
-    return MemoryListResponse(total=len(items), items=items)
+    return MemoryListResponse(total=result.get("total", 0), items=items)
 
 
 @router.post("/", response_model=MemoryResponse, summary="手动添加记忆")
@@ -53,7 +78,8 @@ async def create_memory(
     memory_id = await memory_service.add_memory_manual(
         user_id=current_user.id,
         content=data.content.strip(),
-        memory_type=data.memory_type
+        memory_type=data.memory_type,
+        importance=data.importance
     )
 
     if not memory_id:
@@ -64,7 +90,8 @@ async def create_memory(
         content=data.content.strip(),
         memory_type=data.memory_type,
         source_dialog_id="manual",
-        created_at=None
+        created_at=None,
+        importance=data.importance
     )
 
 
@@ -82,15 +109,16 @@ async def update_memory(
     success = await memory_service.update_memory(
         memory_id=memory_id,
         content=data.content,
-        memory_type=data.memory_type
+        memory_type=data.memory_type,
+        importance=data.importance
     )
 
     if not success:
         raise HTTPException(status_code=404, detail="记忆不存在或更新失败")
 
     # 查询更新后的记录
-    results = await memory_service.list_memories(user_id=current_user.id, limit=200)
-    updated = next((m for m in results if m.get("memory_id") == memory_id), None)
+    result = await memory_service.list_memories(user_id=current_user.id, limit=200, offset=0)
+    updated = next((m for m in result.get("items", []) if m.get("memory_id") == memory_id), None)
 
     if not updated:
         raise HTTPException(status_code=404, detail="更新后未找到记忆")
@@ -100,7 +128,8 @@ async def update_memory(
         content=updated.get("content", ""),
         memory_type=updated.get("memory_type", "fact"),
         source_dialog_id=updated.get("source_dialog_id", ""),
-        created_at=updated.get("created_at")
+        created_at=updated.get("created_at"),
+        importance=updated.get("importance", 3)
     )
 
 

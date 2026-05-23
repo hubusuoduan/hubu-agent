@@ -10,21 +10,31 @@
 
     <p class="page-desc">管理你的长期记忆，AI 在对话中会自动参考这些信息来更好地了解你。</p>
 
-    <!-- 类型筛选 -->
+    <!-- 搜索和筛选 -->
     <div class="filter-bar">
-      <el-radio-group v-model="filterType" size="default">
-        <el-radio-button label="all">全部</el-radio-button>
-        <el-radio-button label="fact">事实</el-radio-button>
-        <el-radio-button label="preference">偏好</el-radio-button>
-        <el-radio-button label="insight">洞察</el-radio-button>
-      </el-radio-group>
-      <span class="memory-count">共 {{ filteredMemories.length }} 条记忆</span>
+      <div class="filter-left">
+        <el-input
+          v-model="searchKeyword"
+          placeholder="搜索记忆内容..."
+          :prefix-icon="Search"
+          clearable
+          style="width: 260px"
+          @input="handleSearch"
+        />
+        <el-radio-group v-model="filterType" size="default" @change="handleFilterChange">
+          <el-radio-button label="all">全部</el-radio-button>
+          <el-radio-button label="fact">事实</el-radio-button>
+          <el-radio-button label="preference">偏好</el-radio-button>
+          <el-radio-button label="insight">洞察</el-radio-button>
+        </el-radio-group>
+      </div>
+      <span class="memory-count">共 {{ total }} 条记忆</span>
     </div>
 
     <!-- 记忆列表 -->
     <div class="memory-list" v-loading="loading">
       <el-card
-        v-for="memory in filteredMemories"
+        v-for="memory in memoryList"
         :key="memory.memory_id"
         class="memory-card"
       >
@@ -49,6 +59,21 @@
             />
           </div>
           <div class="memory-meta">
+            <span class="memory-importance" v-if="editingId !== memory.memory_id">
+              <el-icon
+                v-for="i in 5"
+                :key="i"
+                :class="{ 'star-active': i <= memory.importance }"
+              >
+                <Star />
+              </el-icon>
+            </span>
+            <el-rate
+              v-else
+              v-model="editForm.importance"
+              :max="5"
+              size="small"
+            />
             <span class="memory-source" v-if="memory.source_dialog_id">
               来源: {{ memory.source_dialog_id === 'manual' ? '手动添加' : '对话提取' }}
             </span>
@@ -75,7 +100,18 @@
         </div>
       </el-card>
 
-      <el-empty v-if="!loading && filteredMemories.length === 0" description="暂无记忆" />
+      <el-empty v-if="!loading && memoryList.length === 0" description="暂无记忆" />
+    </div>
+
+    <!-- 分页 -->
+    <div class="pagination-bar" v-if="total > pageSize">
+      <el-pagination
+        v-model:current-page="currentPage"
+        :page-size="pageSize"
+        :total="total"
+        layout="prev, pager, next"
+        @current-change="handlePageChange"
+      />
     </div>
 
     <!-- 添加记忆对话框 -->
@@ -87,6 +123,9 @@
             <el-option label="偏好 (个人偏好)" value="preference" />
             <el-option label="洞察 (重要洞察)" value="insight" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="重要性">
+          <el-rate v-model="addForm.importance" :max="5" />
         </el-form-item>
         <el-form-item label="内容" required>
           <el-input
@@ -106,9 +145,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, Search, Star } from '@element-plus/icons-vue'
 import {
   getMemoryList,
   createMemory,
@@ -120,14 +159,21 @@ import {
 const loading = ref(false)
 const adding = ref(false)
 const memoryList = ref<Memory[]>([])
+const total = ref(0)
+const currentPage = ref(1)
+const pageSize = ref(20)
 const filterType = ref('all')
+const searchKeyword = ref('')
 const showAddDialog = ref(false)
 const editingId = ref<string | null>(null)
-const editForm = ref({ content: '', memory_type: '' })
+const editForm = ref({ content: '', memory_type: '', importance: 3 })
+
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const addForm = ref({
   content: '',
-  memory_type: 'fact'
+  memory_type: 'fact',
+  importance: 3
 })
 
 const typeTagMap: Record<string, { label: string; type: string }> = {
@@ -135,11 +181,6 @@ const typeTagMap: Record<string, { label: string; type: string }> = {
   preference: { label: '偏好', type: 'success' },
   insight: { label: '洞察', type: 'warning' }
 }
-
-const filteredMemories = computed(() => {
-  if (filterType.value === 'all') return memoryList.value
-  return memoryList.value.filter(m => m.memory_type === filterType.value)
-})
 
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp * 1000)
@@ -154,14 +195,43 @@ function formatTime(timestamp: number): string {
 async function loadMemories() {
   loading.value = true
   try {
-    const res = await getMemoryList()
+    const params: any = {
+      page: currentPage.value,
+      page_size: pageSize.value
+    }
+    if (filterType.value !== 'all') {
+      params.memory_type = filterType.value
+    }
+    if (searchKeyword.value.trim()) {
+      params.keyword = searchKeyword.value.trim()
+    }
+    const res = await getMemoryList(params)
     memoryList.value = res.items || []
+    total.value = res.total || 0
   } catch (error) {
     ElMessage.error('加载记忆列表失败')
     console.error(error)
   } finally {
     loading.value = false
   }
+}
+
+function handleSearch() {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    currentPage.value = 1
+    loadMemories()
+  }, 300)
+}
+
+function handleFilterChange() {
+  currentPage.value = 1
+  loadMemories()
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
+  loadMemories()
 }
 
 async function handleAdd() {
@@ -174,7 +244,7 @@ async function handleAdd() {
     await createMemory(addForm.value)
     ElMessage.success('添加成功')
     showAddDialog.value = false
-    addForm.value = { content: '', memory_type: 'fact' }
+    addForm.value = { content: '', memory_type: 'fact', importance: 3 }
     await loadMemories()
   } catch (error: any) {
     ElMessage.error(error.response?.data?.detail || '添加失败')
@@ -187,13 +257,14 @@ function startEdit(memory: Memory) {
   editingId.value = memory.memory_id
   editForm.value = {
     content: memory.content,
-    memory_type: memory.memory_type
+    memory_type: memory.memory_type,
+    importance: memory.importance || 3
   }
 }
 
 function cancelEdit() {
   editingId.value = null
-  editForm.value = { content: '', memory_type: '' }
+  editForm.value = { content: '', memory_type: '', importance: 3 }
 }
 
 async function handleUpdate(memoryId: string) {
@@ -204,7 +275,8 @@ async function handleUpdate(memoryId: string) {
   try {
     await updateMemory(memoryId, {
       content: editForm.value.content,
-      memory_type: editForm.value.memory_type
+      memory_type: editForm.value.memory_type,
+      importance: editForm.value.importance
     })
     ElMessage.success('更新成功')
     editingId.value = null
@@ -270,9 +342,16 @@ onMounted(() => {
   margin-bottom: 20px;
 }
 
+.filter-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
 .memory-count {
   font-size: 13px;
   color: #9ca3af;
+  flex-shrink: 0;
 }
 
 .memory-list {
@@ -324,6 +403,7 @@ onMounted(() => {
 
 .memory-meta {
   display: flex;
+  align-items: center;
   gap: 16px;
   margin-top: 8px;
   padding-left: 68px;
@@ -331,10 +411,31 @@ onMounted(() => {
   color: #9ca3af;
 }
 
+.memory-importance {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.memory-importance .el-icon {
+  font-size: 13px;
+  color: #d1d5db;
+}
+
+.memory-importance .star-active {
+  color: #f59e0b;
+}
+
 .memory-actions {
   flex-shrink: 0;
   display: flex;
   gap: 4px;
   margin-left: 12px;
+}
+
+.pagination-bar {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
 }
 </style>

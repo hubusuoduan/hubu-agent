@@ -50,7 +50,6 @@ const nodeDefinitions = [
   { id: 'memory', label: '长期记忆', icon: '🧠', x: 300, y: 100 },
   { id: 'history_manager', label: '历史管理', icon: '📝', x: 300, y: 200 },
   { id: 'stream_chat_agent', label: '对话 Agent', icon: '🤖', x: 300, y: 300 },
-  { id: 'memory_extract', label: '记忆提取', icon: '💾', x: 300, y: 400 },
 ]
 
 const nodes = computed(() =>

@@ -11,10 +11,6 @@ from app.database.models.user import User
 from app.schemas.dialog import (
     CreateDialogRequest,
     UpdateDialogNameRequest,
-    DialogResponse,
-    DialogListResponse,
-    HistoryMessageResponse,
-    DialogHistoryResponse,
 )
 
 router = APIRouter()
@@ -73,8 +69,6 @@ async def get_dialog_list(
                 {
                     "dialog_id": d.dialog_id,
                     "name": d.name,
-                    "user_id": d.user_id,
-                    "summary": d.summary,
                     "create_time": d.create_time.isoformat() if d.create_time else None,
                     "update_time": d.update_time.isoformat() if d.update_time else None
                 }

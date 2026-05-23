@@ -31,13 +31,20 @@ class MemoryAgent:
 - 避免提取过于宽泛的信息（如"用户在聊天"）
 - 优先提取可能在未来对话中有用的信息
 
+重要性评分规则（1-5分）：
+- 1分：几乎不重要，可能只用一次的信息
+- 2分：不太重要，偶尔可能有用
+- 3分：一般重要，有一定参考价值
+- 4分：比较重要，在多数对话中都有参考价值
+- 5分：非常重要，核心个人信息（如姓名、专业、关键偏好）
+
 你必须严格按以下 JSON 格式返回，不要返回其他内容：
 ```json
 {
     "should_save": true/false,
     "memories": [
-        {"content": "用户是湖北大学计算机专业学生", "type": "fact"},
-        {"content": "用户偏好使用Python编程", "type": "preference"}
+        {"content": "用户是湖北大学计算机专业学生", "type": "fact", "importance": 5},
+        {"content": "用户偏好使用Python编程", "type": "preference", "importance": 4}
     ]
 }
 ```
@@ -110,8 +117,11 @@ class MemoryAgent:
             for m in memories:
                 content = m.get("content", "").strip()
                 mem_type = m.get("type", "fact").strip()
+                importance = m.get("importance", 3)
+                if not isinstance(importance, int) or importance < 1 or importance > 5:
+                    importance = 3
                 if content and mem_type in ("preference", "fact", "insight"):
-                    valid_memories.append({"content": content, "type": mem_type})
+                    valid_memories.append({"content": content, "type": mem_type, "importance": importance})
 
             if valid_memories:
                 logger.info(f"提取到 {len(valid_memories)} 条用户记忆")

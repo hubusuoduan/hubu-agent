@@ -10,6 +10,7 @@ class MemoryResponse(BaseModel):
     memory_type: str
     source_dialog_id: Optional[str] = ""
     created_at: Optional[int] = None
+    importance: int = 3
 
 
 class MemoryListResponse(BaseModel):
@@ -22,9 +23,11 @@ class MemoryCreateRequest(BaseModel):
     """手动添加记忆请求"""
     content: str
     memory_type: str = "fact"
+    importance: int = 3
 
 
 class MemoryUpdateRequest(BaseModel):
     """更新记忆请求"""
     content: Optional[str] = None
     memory_type: Optional[str] = None
+    importance: Optional[int] = None

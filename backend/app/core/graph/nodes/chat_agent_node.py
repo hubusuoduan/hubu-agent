@@ -116,15 +116,17 @@ async def stream_chat_agent_node(state: dict, writer: StreamWriter) -> dict:
 
         # 流式执行 ChatAgent，并通过 writer 发送数据
         full_response = ""
-        async for chunk in agent.stream_run(
+        async for event in agent.stream_run(
             user_input=user_input,
             history=history if history else None,
             context=context
         ):
-            if chunk:
-                full_response += chunk
-                # 使用 writer 发送结构化事件数据
-                writer({"type": "content", "content": chunk})
+            if event and isinstance(event, dict):
+                event_type = event.get("type", "")
+                if event_type == "content" and event.get("content"):
+                    full_response += event["content"]
+                # 通过 writer 将所有事件（content/thinking/tool_start/tool_end）转发给前端
+                writer(event)
 
         logger.info(f"流式 ChatAgent 节点执行完成，回复长度: {len(full_response)}")
 

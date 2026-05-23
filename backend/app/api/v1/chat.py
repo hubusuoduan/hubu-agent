@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from typing import Optional, List
 from loguru import logger
@@ -6,6 +8,7 @@ import os
 import tempfile
 
 from app.core.graph.graph import run_chat_graph, run_stream_chat_graph, run_stream_chat_graph_with_trace
+from app.core.graph.nodes.memory_extract_node import memory_extract_node
 from app.database.dao.history_dao import HistoryDao
 from app.database.dao.dialog_dao import DialogDao
 from app.database.session import get_async_session
@@ -73,9 +76,7 @@ async def upload_file(
 
             return {
                 "filename": file.filename,
-                "content": full_content,
-                "chunks_count": len(chunks),
-                "total_length": len(full_content)
+                "content": full_content
             }
 
         finally:
@@ -176,6 +177,23 @@ async def send_message(
             )
         except Exception as db_error:
             logger.warning(f"保存AI回复失败: {db_error}")
+
+        # 异步触发记忆提取（不阻塞响应）
+        async def _do_extract():
+            try:
+                state = {
+                    "messages": messages,
+                    "user_input": user_input,
+                    "context": None,
+                    "session_id": dialog_id,
+                    "user_id": current_user.id,
+                    "response": response_text
+                }
+                await memory_extract_node(state)
+            except Exception as e:
+                logger.error(f"异步记忆提取失败: {e}")
+
+        asyncio.create_task(_do_extract())
 
         return ChatResponse(
             response=response_text,
@@ -285,6 +303,23 @@ async def send_stream_message(
 
                 logger.info(f"流式输出完成，总长度: {len(full_response)}")
 
+                # 异步触发记忆提取（不阻塞响应）
+                async def _do_extract():
+                    try:
+                        state = {
+                            "messages": messages,
+                            "user_input": user_input,
+                            "context": None,
+                            "session_id": dialog_id,
+                            "user_id": current_user.id,
+                            "response": full_response
+                        }
+                        await memory_extract_node(state)
+                    except Exception as e:
+                        logger.error(f"异步记忆提取失败: {e}")
+
+                asyncio.create_task(_do_extract())
+
                 # 发送结束标记，附带 dialog_id
                 done_data = json.dumps({"done": True, "dialog_id": dialog_id}, ensure_ascii=False)
                 yield f"data: {done_data}\n\n"
@@ -312,53 +347,3 @@ async def send_stream_message(
         logger.error(f"处理流式消息失败: {e}")
         raise HTTPException(status_code=500, detail=f"处理流式消息失败: {str(e)}")
 
-
-@router.get("/history/{dialog_id}", summary="获取聊天历史")
-async def get_chat_history(
-    dialog_id: str,
-    limit: int = 50,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_async_session)
-):
-    """
-    获取聊天历史（需要认证）
-
-    - **dialog_id**: 对话ID
-    - **limit**: 限制返回数量（默认50）
-    """
-    try:
-        # 校验对话存在且属于当前用户
-        dialog = await DialogDao.get_dialog_by_id(dialog_id)
-        if not dialog:
-            raise HTTPException(status_code=404, detail="对话不存在")
-        if dialog.user_id != current_user.id:
-            raise HTTPException(status_code=403, detail="无权访问该对话")
-
-        histories = await HistoryDao.get_history_by_dialog_id(
-            dialog_id=dialog_id,
-            limit=limit
-        )
-
-        messages = [
-            {
-                "role": h.role,
-                "content": h.content,
-                "create_time": h.create_time.isoformat() if h.create_time else None
-            }
-            for h in histories
-        ]
-
-        return {
-            "dialog_id": dialog_id,
-            "messages": messages,
-            "total": len(messages)
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取聊天历史失败: {e}")
-        return {
-            "dialog_id": dialog_id,
-            "messages": [],
-            "total": 0
-        }

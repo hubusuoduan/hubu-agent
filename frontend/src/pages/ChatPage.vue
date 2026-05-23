@@ -27,6 +27,16 @@
         </el-button>
         <el-button
           size="default"
+          type="success"
+          plain
+          @click="showExportDialog = true"
+          :disabled="!dialogId"
+        >
+          <el-icon><Download /></el-icon>
+          导出
+        </el-button>
+        <el-button
+          size="default"
           type="danger"
           plain
           @click="clearChat"
@@ -87,16 +97,24 @@
       :total-duration-ms="workflowTotalMs"
       @close="showWorkflowPanel = false"
     />
+
+    <!-- 导出对话框 -->
+    <ExportDialog
+      v-model="showExportDialog"
+      :dialog-id="dialogId"
+      :message-count="messages.length"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Delete, Loading, SwitchButton, Plus, View } from '@element-plus/icons-vue'
+import { Delete, Loading, SwitchButton, Plus, View, Download } from '@element-plus/icons-vue'
 import ChatMessage from '../components/ChatMessage.vue'
 import ChatInput from '../components/ChatInput.vue'
 import WorkflowSidebar from '../components/WorkflowSidebar.vue'
+import ExportDialog from '../components/ExportDialog.vue'
 import { useChat } from '../composables/useChat'
 import { initPreviewImage, initDownloadFile } from '../composables/useMarkdown'
 
@@ -135,6 +153,9 @@ const {
   clearFile,
   handleLogout,
 } = useChat()
+
+// 导出对话框
+const showExportDialog = ref(false)
 
 // 监听路由参数变化，加载对话历史
 watch(

@@ -7,6 +7,7 @@ export interface Memory {
   memory_type: string
   source_dialog_id: string
   created_at: number | null
+  importance: number
 }
 
 export interface MemoryListResponse {
@@ -17,16 +18,23 @@ export interface MemoryListResponse {
 export interface MemoryCreateRequest {
   content: string
   memory_type: string
+  importance?: number
 }
 
 export interface MemoryUpdateRequest {
   content?: string
   memory_type?: string
+  importance?: number
 }
 
-// 获取记忆列表
-export const getMemoryList = () => {
-  return request.get<MemoryListResponse>('/memory/')
+// 获取记忆列表（支持分页和搜索）
+export const getMemoryList = (params?: {
+  page?: number
+  page_size?: number
+  keyword?: string
+  memory_type?: string
+}) => {
+  return request.get<MemoryListResponse>('/memory/', { params })
 }
 
 // 手动添加记忆

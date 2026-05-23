@@ -48,6 +48,7 @@ class MemoryService:
             schema.add_field(field_name="source_dialog_id", datatype=DataType.VARCHAR, max_length=128)
             schema.add_field(field_name="embedding", datatype=DataType.FLOAT_VECTOR, dim=self.dimension)
             schema.add_field(field_name="created_at", datatype=DataType.INT64)
+            schema.add_field(field_name="importance", datatype=DataType.INT64)
 
             # 创建集合
             self.client.create_collection(
@@ -115,7 +116,7 @@ class MemoryService:
                 data=[query_embedding],
                 anns_field="embedding",
                 limit=top_k,
-                output_fields=["memory_id", "content", "memory_type", "source_dialog_id", "created_at"],
+                output_fields=["memory_id", "content", "memory_type", "source_dialog_id", "created_at", "importance"],
                 search_params=search_params,
                 filter=f'user_id == {user_id}'
             )
@@ -133,6 +134,7 @@ class MemoryService:
                         "memory_type": hit["entity"].get("memory_type"),
                         "source_dialog_id": hit["entity"].get("source_dialog_id"),
                         "created_at": hit["entity"].get("created_at"),
+                        "importance": hit["entity"].get("importance", 3),
                         "score": score
                     })
 
@@ -148,7 +150,8 @@ class MemoryService:
         user_id: str,
         content: str,
         memory_type: str = "fact",
-        source_dialog_id: str = ""
+        source_dialog_id: str = "",
+        importance: int = 3
     ) -> Optional[str]:
         """添加一条用户记忆
 
@@ -157,6 +160,7 @@ class MemoryService:
             content: 记忆内容
             memory_type: 记忆类型 (preference/fact/insight)
             source_dialog_id: 来源对话ID
+            importance: 重要性评分 (1-5)
 
         Returns:
             记忆ID，失败返回 None
@@ -165,6 +169,7 @@ class MemoryService:
             # 确保 user_id 为整数（Milvus schema 定义为 INT64）
             user_id = int(user_id)
             source_dialog_id = str(source_dialog_id)
+            importance = max(1, min(5, importance))
 
             # 先检查是否和已有记忆重复
             is_dup, dup_id = await self._check_duplicate(user_id, content)
@@ -186,7 +191,8 @@ class MemoryService:
                 "memory_type": memory_type,
                 "source_dialog_id": source_dialog_id,
                 "embedding": embedding,
-                "created_at": int(time.time())
+                "created_at": int(time.time()),
+                "importance": importance
             }]
 
             self.client.insert(
@@ -282,35 +288,74 @@ class MemoryService:
             logger.error(f"删除记忆失败: {e}")
             return False
 
-    async def list_memories(self, user_id: str, limit: int = 100) -> List[Dict]:
-        """列出用户所有记忆
+    async def list_memories(
+        self,
+        user_id: str,
+        limit: int = 20,
+        offset: int = 0,
+        keyword: str = "",
+        memory_type: str = ""
+    ) -> Dict:
+        """列出用户记忆（支持分页和搜索）
 
         Args:
             user_id: 用户ID
-            limit: 最大返回数量
+            limit: 每页数量
+            offset: 偏移量
+            keyword: 搜索关键词（模糊匹配内容）
+            memory_type: 按类型筛选
 
         Returns:
-            记忆列表
+            {"total": 总数, "items": 记忆列表}
         """
         try:
+            # 构建过滤条件
+            filters = [f'user_id == {user_id}']
+            if memory_type and memory_type in ("preference", "fact", "insight"):
+                filters.append(f'memory_type == "{memory_type}"')
+
+            filter_expr = " and ".join(filters)
+
+            # 先查总数
+            count_results = self.client.query(
+                collection_name=self.COLLECTION_NAME,
+                filter=filter_expr,
+                output_fields=["count(*)"]
+            )
+            total = count_results[0].get("count(*)", 0) if count_results else 0
+
+            # 查询分页数据
             results = self.client.query(
                 collection_name=self.COLLECTION_NAME,
-                filter=f'user_id == {user_id}',
-                output_fields=["memory_id", "content", "memory_type", "source_dialog_id", "created_at"],
-                limit=limit
+                filter=filter_expr,
+                output_fields=["memory_id", "content", "memory_type", "source_dialog_id", "created_at", "importance"],
+                limit=offset + limit,
+                sort_fields=["created_at"]
             )
 
-            return results
+            # 按 created_at 降序排列（Milvus query 默认可能不排序）
+            results.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+
+            # 关键词过滤（Milvus 不支持 LIKE，在应用层过滤）
+            if keyword:
+                keyword_lower = keyword.lower()
+                results = [r for r in results if keyword_lower in r.get("content", "").lower()]
+
+            # 分页截取
+            items = results[offset:offset + limit]
+
+            return {"total": total, "items": items}
 
         except Exception as e:
             logger.error(f"列出用户记忆失败: {e}")
-            return []
+            return {"total": 0, "items": []}
 
     async def add_memory_manual(
         self,
         user_id: int,
         content: str,
-        memory_type: str = "fact"
+        memory_type: str = "fact",
+        importance: int = 3
     ) -> Optional[str]:
         """手动添加一条用户记忆（不走去重检查，由用户主动添加）
 
@@ -318,11 +363,13 @@ class MemoryService:
             user_id: 用户ID
             content: 记忆内容
             memory_type: 记忆类型
+            importance: 重要性评分 (1-5)
 
         Returns:
             记忆ID，失败返回 None
         """
         try:
+            importance = max(1, min(5, importance))
             embedding = await get_embedding(content)
             memory_id = str(uuid.uuid4())
 
@@ -333,7 +380,8 @@ class MemoryService:
                 "memory_type": memory_type,
                 "source_dialog_id": "manual",
                 "embedding": embedding,
-                "created_at": int(time.time())
+                "created_at": int(time.time()),
+                "importance": importance
             }]
 
             self.client.insert(
@@ -352,7 +400,8 @@ class MemoryService:
         self,
         memory_id: str,
         content: Optional[str] = None,
-        memory_type: Optional[str] = None
+        memory_type: Optional[str] = None,
+        importance: Optional[int] = None
     ) -> bool:
         """更新一条记忆（删除旧记录，重新写入）
 
@@ -360,6 +409,7 @@ class MemoryService:
             memory_id: 记忆ID
             content: 新内容（可选）
             memory_type: 新类型（可选）
+            importance: 新重要性评分（可选）
 
         Returns:
             是否更新成功
@@ -369,7 +419,7 @@ class MemoryService:
             results = self.client.query(
                 collection_name=self.COLLECTION_NAME,
                 filter=f'memory_id == "{memory_id}"',
-                output_fields=["id", "user_id", "content", "memory_type", "source_dialog_id", "created_at"]
+                output_fields=["id", "user_id", "content", "memory_type", "source_dialog_id", "created_at", "importance"]
             )
 
             if not results:
@@ -379,6 +429,8 @@ class MemoryService:
             old = results[0]
             new_content = content if content is not None else old["content"]
             new_type = memory_type if memory_type is not None else old["memory_type"]
+            new_importance = importance if importance is not None else old.get("importance", 3)
+            new_importance = max(1, min(5, new_importance))
 
             # 删除旧记录
             self.client.delete(
@@ -395,7 +447,8 @@ class MemoryService:
                 "memory_type": new_type,
                 "source_dialog_id": old.get("source_dialog_id", ""),
                 "embedding": embedding,
-                "created_at": old.get("created_at", int(time.time()))
+                "created_at": old.get("created_at", int(time.time())),
+                "importance": new_importance
             }]
 
             self.client.insert(

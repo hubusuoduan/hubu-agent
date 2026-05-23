@@ -68,7 +68,10 @@ export function useChat() {
       if (messagesRef.value) {
         messagesRef.value.scrollTop = messagesRef.value.scrollHeight
       }
-      loadChartPreviews()
+      // 只在非生成状态时加载图表预览，避免流式过程中 DOM 反复重渲染导致竞争
+      if (!isGenerating.value) {
+        loadChartPreviews()
+      }
     })
   }
 
@@ -180,6 +183,8 @@ export function useChat() {
           isGenerating.value = false
           currentAiMessageIndex.value = -1
           clearFile()
+          // 流式完成后滚动到底部并加载图表预览
+          scrollToBottom()
         },
         // onError
         (error: Error) => {

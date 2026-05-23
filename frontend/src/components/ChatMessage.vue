@@ -274,6 +274,15 @@ defineEmits<{
   background: #fef2f2;
 }
 
+/* 报告占位容器（加载中状态） */
+.message-text :deep(.report-card-placeholder) {
+  border-radius: 12px;
+  margin: 8px 0;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+  background: #fafbfc;
+}
+
 /* 报告下载卡片 */
 .message-text :deep(.report-download-card) {
   display: flex;

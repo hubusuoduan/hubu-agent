@@ -127,7 +127,7 @@ class ChatAgent:
             logger.error(f"ChatAgent执行失败: {e}")
             raise
 
-    async def stream_run(self, user_input: str, history: Optional[List[dict]] = None, context: Optional[str] = None) -> AsyncGenerator[str, None]:
+    async def stream_run(self, user_input: str, history: Optional[List[dict]] = None, context: Optional[str] = None) -> AsyncGenerator[dict, None]:
         """
         流式执行 ChatAgent，处理用户输入
 
@@ -139,7 +139,11 @@ class ChatAgent:
             context: RAG检索的上下文信息（可选）
 
         Yields:
-            AI的回复片段
+            结构化事件字典，包含 type 和相关数据：
+            - {"type": "content", "content": "..."} - 文本内容
+            - {"type": "thinking", "content": "..."} - 思考过程
+            - {"type": "tool_start", "tool": "...", "input": "..."} - 工具调用开始
+            - {"type": "tool_end", "tool": "...", "output": "..."} - 工具调用结束
         """
         try:
             # 构建输入消息（context通过消息前缀注入）
@@ -156,7 +160,27 @@ class ChatAgent:
                 if kind == "on_chat_model_stream":
                     content = event["data"]["chunk"].content
                     if content:
-                        yield content
+                        yield {"type": "content", "content": content}
+
+                elif kind == "on_chat_model_start":
+                    # 模型开始思考
+                    yield {"type": "thinking", "content": "正在思考..."}
+
+                elif kind == "on_tool_start":
+                    # 工具调用开始
+                    tool_name = event.get("name", "unknown")
+                    tool_input = event.get("data", {}).get("input", "")
+                    yield {"type": "tool_start", "tool": tool_name, "input": str(tool_input)}
+
+                elif kind == "on_tool_end":
+                    # 工具调用结束
+                    tool_name = event.get("name", "unknown")
+                    tool_output = ""
+                    if hasattr(event.get("data", {}).get("output"), "content"):
+                        tool_output = event["data"]["output"].content
+                    else:
+                        tool_output = str(event.get("data", {}).get("output", ""))
+                    yield {"type": "tool_end", "tool": tool_name, "output": tool_output}
 
         except Exception as e:
             logger.error(f"ChatAgent流式执行失败: {e}")

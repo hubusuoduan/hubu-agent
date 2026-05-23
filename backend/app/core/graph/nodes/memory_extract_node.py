@@ -52,8 +52,8 @@ async def memory_extract_node(state: ChatState) -> dict:
 
         # 获取用户已有记忆，用于 LLM 层面去重
         memory_service = get_memory_service()
-        existing = await memory_service.list_memories(user_id=user_id, limit=50)
-        existing_contents = [m.get("content", "") for m in existing] if existing else []
+        existing_result = await memory_service.list_memories(user_id=user_id, limit=50)
+        existing_contents = [m.get("content", "") for m in existing_result.get("items", [])]
 
         # 使用 MemoryAgent 提取记忆（传入已有记忆避免重复提取）
         memory_agent = get_memory_agent()
@@ -72,7 +72,8 @@ async def memory_extract_node(state: ChatState) -> dict:
                 user_id=user_id,
                 content=m["content"],
                 memory_type=m["type"],
-                source_dialog_id=session_id
+                source_dialog_id=session_id,
+                importance=m.get("importance", 3)
             )
 
         logger.info(f"成功写入 {len(memories)} 条长期记忆，user={user_id}")

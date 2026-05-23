@@ -41,6 +41,9 @@ async def memory_node(state: ChatState) -> dict:
             logger.info("未检索到相关长期记忆")
             return {"context": context}
 
+        # 按 importance 降序排序，高重要性记忆优先
+        memories.sort(key=lambda m: m.get("importance", 3), reverse=True)
+
         # 构建记忆文本
         memory_lines = []
         for m in memories:

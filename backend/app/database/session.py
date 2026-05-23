@@ -28,3 +28,4 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     finally:
         await session.close()
         logger.debug('数据库会话已关闭')
+        

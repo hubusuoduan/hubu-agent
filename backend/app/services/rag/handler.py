@@ -92,8 +92,7 @@ class RagHandler:
         
         # 1. 获取查询向量
         query_embedding = await get_embedding(query)
-        logger.debug(f"查询向量维度: {len(query_embedding)}")
-        
+                
         # 2. 从每个知识库检索文档
         all_documents = []
         for knowledge_id in knowledge_ids:

@@ -149,10 +149,13 @@ async def run_stream_chat_graph(
             "response": ""
         }
 
-        # 流式执行 Graph,使用 custom 模式获取文本块
+        # 流式执行 Graph,使用 custom 模式获取事件数据
         async for chunk in stream_chat_graph.astream(initial_state, stream_mode="custom"):
-            if isinstance(chunk, str) and chunk:
+            if isinstance(chunk, dict):
                 yield chunk
+            elif isinstance(chunk, str) and chunk:
+                # 兼容旧格式
+                yield {"type": "content", "content": chunk}
 
         logger.info(f"流式 Chat Graph 执行完成，session_id: {session_id}")
 

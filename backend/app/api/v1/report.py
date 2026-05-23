@@ -59,6 +59,16 @@ async def download_report(
     }
     media_type = mime_map.get(report.file_format, "application/octet-stream")
 
+    # 图片格式使用 inline 方式（浏览器内嵌显示），其他格式使用 attachment（下载）
+    is_image = report.file_format in ("png", "jpg", "jpeg", "svg", "gif", "webp")
+    if is_image:
+        return FileResponse(
+            path=report.file_path,
+            filename=report.file_name,
+            media_type=media_type,
+            content_disposition_type="inline",
+        )
+
     return FileResponse(
         path=report.file_path,
         filename=report.file_name,

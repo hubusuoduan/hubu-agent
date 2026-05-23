@@ -259,15 +259,19 @@ async def send_stream_message(
             full_response = ""
             try:
                 # 使用封装好的流式 Graph 函数
-                async for chunk in run_stream_chat_graph(
+                async for event in run_stream_chat_graph(
                     user_input=user_input,
                     session_id=dialog_id,
                     user_id=current_user.id,
                     messages=messages
                 ):
-                    full_response += chunk
-                    data = json.dumps({"content": chunk}, ensure_ascii=False)
-                    yield f"data: {data}\n\n"
+                    if isinstance(event, dict):
+                        event_type = event.get("type", "")
+                        if event_type == "content":
+                            full_response += event.get("content", "")
+                        # 将结构化事件发送给前端
+                        data = json.dumps(event, ensure_ascii=False)
+                        yield f"data: {data}\n\n"
 
                 # 保存完整的 AI 回复到数据库
                 try:
@@ -280,6 +284,7 @@ async def send_stream_message(
                     logger.warning(f"保存AI回复失败: {db_error}")
 
                 logger.info(f"流式输出完成，总长度: {len(full_response)}")
+
                 # 发送结束标记，附带 dialog_id
                 done_data = json.dumps({"done": True, "dialog_id": dialog_id}, ensure_ascii=False)
                 yield f"data: {done_data}\n\n"

@@ -117,6 +117,10 @@ class VectorDBClient:
     async def search(self, query_embedding: List[float], collection_name: str, top_k: int = 8) -> List[dict]:
         """在集合中搜索相似数据"""
         try:
+            # 检查 collection 是否存在
+            if not self.client.has_collection(collection_name):
+                return []
+
             # 搜索参数(从配置读取)
             nprobe = settings.MILVUS_NPROBE
             search_params = {
@@ -126,7 +130,6 @@ class VectorDBClient:
                 }
             }
             
-            logger.debug(f"搜索集合 {collection_name}, top_k={top_k}, nprobe={nprobe}")
             
             # 搜索
             results = self.client.search(

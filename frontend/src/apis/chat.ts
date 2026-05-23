@@ -21,11 +21,21 @@ export const sendMessage = (data: ChatMessage) => {
 let abortController: AbortController | null = null
 
 // 发送流式聊天消息
+// 思考过程事件类型
+export interface ThinkingEvent {
+  type: 'thinking' | 'tool_start' | 'tool_end'
+  content?: string
+  tool?: string
+  input?: string
+  output?: string
+}
+
 export const sendStreamMessage = async (
   data: ChatMessage,
   onChunk: (chunk: string) => void,
   onComplete: (dialogId?: string) => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
+  onEvent?: (event: ThinkingEvent) => void
 ) => {
   try {
     // 创建新的 AbortController
@@ -81,7 +91,17 @@ export const sendStreamMessage = async (
 
           try {
             const parsed = JSON.parse(data)
-            if (parsed.content) {
+            // 结构化事件格式：{ type: "content"|"thinking"|"tool_start"|"tool_end", ... }
+            if (parsed.type) {
+              if (parsed.type === 'content' && parsed.content) {
+                onChunk(parsed.content)
+              }
+              // 所有非 content 事件都通过 onEvent 回调传递
+              if (parsed.type !== 'content' && onEvent) {
+                onEvent(parsed)
+              }
+            } else if (parsed.content) {
+              // 兼容旧格式
               onChunk(parsed.content)
             }
             if (parsed.done && parsed.dialog_id) {

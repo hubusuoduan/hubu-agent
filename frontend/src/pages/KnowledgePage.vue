@@ -13,7 +13,7 @@
       <el-card v-for="kb in knowledgeList" :key="kb.id" class="knowledge-card">
         <div class="card-header">
           <div class="card-title">
-            <el-icon :size="24" color="#667eea"><FolderOpened /></el-icon>
+            <el-icon :size="24" color="#09b572"><FolderOpened /></el-icon>
             <h3>{{ kb.name }}</h3>
           </div>
           <el-button type="danger" size="small" @click="handleDelete(kb.id)">
@@ -189,7 +189,7 @@ onMounted(() => {
 
 <style scoped>
 .knowledge-page {
-  padding: 24px;
+  padding: 32px;
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -198,13 +198,14 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
 .page-header h2 {
   margin: 0;
-  font-size: 24px;
-  color: #303133;
+  font-size: 22px;
+  color: #1f2937;
+  font-weight: 700;
 }
 
 .knowledge-list {
@@ -214,11 +215,14 @@ onMounted(() => {
 }
 
 .knowledge-card {
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
+  border-radius: 14px;
+  border: 1px solid #e5e7eb;
 }
 
 .knowledge-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  border-color: rgba(99, 102, 241, 0.2);
 }
 
 .card-header {
@@ -236,12 +240,13 @@ onMounted(() => {
 
 .card-title h3 {
   margin: 0;
-  font-size: 18px;
-  color: #303133;
+  font-size: 17px;
+  color: #1f2937;
+  font-weight: 600;
 }
 
 .card-description {
-  color: #606266;
+  color: #6b7280;
   font-size: 14px;
   margin: 12px 0;
   min-height: 40px;
@@ -252,11 +257,11 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   padding-top: 12px;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid #e5e7eb;
 }
 
 .upload-tip {
   font-size: 12px;
-  color: #909399;
+  color: #9ca3af;
 }
 </style>

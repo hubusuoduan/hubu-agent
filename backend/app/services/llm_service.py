@@ -35,7 +35,8 @@ class LLMService:
                     base_url=base_url,
                     model=model_name,
                     temperature=0.7,
-                    streaming=True
+                    streaming=True,
+                    stream_usage=True
                 )
                 logger.info(f"LLM模型初始化成功: {model_name}")
             except Exception as e:

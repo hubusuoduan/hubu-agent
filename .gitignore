@@ -54,6 +54,8 @@ logs/
 
 # Documentation
 docs/
+SYSTEM_PROMPT.md
+PROJECT_SUMMARY.md
 
 # Environment variables
 .env
@@ -88,6 +90,7 @@ poetry.lock
 # Backend specific
 backend/.venv/
 backend/logs/
+backend/reports/
 backend/*.db
 backend/*.sqlite
 

@@ -140,50 +140,93 @@ onMounted(() => {
   display: flex;
 }
 
+/* 全局覆盖 Element Plus 主色为绿色 */
+:root {
+  --el-color-primary: #09b572;
+  --el-color-primary-light-3: #3cc88f;
+  --el-color-primary-light-5: #6ddaaa;
+  --el-color-primary-light-7: #9eedc5;
+  --el-color-primary-light-8: #b5f2d4;
+  --el-color-primary-light-9: #ccf7e3;
+  --el-color-primary-dark-2: #07925b;
+}
+
+.el-button--primary {
+  --el-button-bg-color: #09b572;
+  --el-button-border-color: #09b572;
+  --el-button-hover-bg-color: #07a065;
+  --el-button-hover-border-color: #07a065;
+  --el-button-active-bg-color: #07925b;
+  --el-button-active-border-color: #07925b;
+}
+
+.el-button--primary.is-plain {
+  --el-button-bg-color: #ecfaf3;
+  --el-button-border-color: #3cc88f;
+  --el-button-hover-bg-color: #09b572;
+  --el-button-hover-border-color: #09b572;
+  --el-button-hover-text-color: #ffffff;
+}
+
+.el-button--primary.is-text {
+  --el-button-hover-bg-color: rgba(9, 181, 114, 0.1);
+  --el-button-hover-text-color: #09b572;
+}
+
 .app-sidebar {
-  width: 220px;
-  background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+  width: 240px;
+  background: #2c2c2c;
   color: white;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
 }
 
 .sidebar-logo {
-  padding: 24px 20px;
-  font-size: 20px;
-  font-weight: bold;
+  padding: 28px 20px;
+  font-size: 18px;
+  font-weight: 700;
   text-align: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+  color: #09b572;
 }
 
 .sidebar-nav {
   flex-shrink: 0;
+  padding: 4px 8px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 24px;
+  padding: 12px 16px;
+  border-radius: 10px;
   text-decoration: none;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 15px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 14px;
   font-weight: 500;
   transition: all 0.2s;
+  margin-bottom: 2px;
 }
 
 .nav-item:hover {
-  color: white;
-  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .nav-item.active {
   color: white;
-  background: rgba(255, 255, 255, 0.2);
-  border-left: 4px solid white;
+  background: rgba(9, 181, 114, 0.15);
+  border-left: none;
+  box-shadow: inset 0 0 0 1px rgba(9, 181, 114, 0.25);
+}
+
+.nav-item.active .el-icon {
+  color: #09b572;
 }
 
 /* 对话历史列表样式 */
@@ -192,7 +235,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   margin-top: 8px;
 }
 
@@ -200,15 +243,26 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
+  padding: 14px 16px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .history-list {
   flex: 1;
   overflow-y: auto;
   padding: 0 8px 12px;
+}
+
+.history-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
 }
 
 .history-item {
@@ -219,18 +273,18 @@ onMounted(() => {
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.5);
   font-size: 13px;
 }
 
 .history-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .history-item.active {
-  background: rgba(255, 255, 255, 0.15);
-  color: white;
+  background: rgba(9, 181, 114, 0.12);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .history-item-icon {
@@ -248,7 +302,7 @@ onMounted(() => {
 .history-item-delete {
   opacity: 0;
   transition: opacity 0.2s;
-  color: rgba(255, 255, 255, 0.5) !important;
+  color: rgba(255, 255, 255, 0.35) !important;
 }
 
 .history-item:hover .history-item-delete {
@@ -257,14 +311,14 @@ onMounted(() => {
 
 .history-empty {
   text-align: center;
-  padding: 20px;
-  color: rgba(255, 255, 255, 0.4);
+  padding: 24px;
+  color: rgba(255, 255, 255, 0.25);
   font-size: 13px;
 }
 
 .app-content {
   flex: 1;
   overflow: hidden;
-  background-color: #f5f7fa;
+  background-color: #f5f5f5;
 }
 </style>

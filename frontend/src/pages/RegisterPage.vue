@@ -118,37 +118,62 @@ async function handleRegister() {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #1a1d23;
+  position: relative;
+  overflow: hidden;
+}
+
+.register-page::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(ellipse at 70% 50%, rgba(9, 181, 114, 0.12) 0%, transparent 50%),
+              radial-gradient(ellipse at 30% 50%, rgba(9, 181, 114, 0.06) 0%, transparent 50%);
+  animation: registerBgPulse 8s ease-in-out infinite alternate;
+}
+
+@keyframes registerBgPulse {
+  0% { transform: scale(1) rotate(0deg); }
+  100% { transform: scale(1.1) rotate(-3deg); }
 }
 
 .register-container {
-  background: white;
-  padding: 40px;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  padding: 48px 40px;
+  border-radius: 20px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3);
   width: 400px;
+  position: relative;
+  z-index: 1;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .register-container h2 {
   text-align: center;
-  margin-bottom: 30px;
-  color: #303133;
+  margin-bottom: 36px;
+  color: #1f2937;
   font-size: 24px;
+  font-weight: 700;
 }
 
 .login-link {
   text-align: center;
-  margin-top: 16px;
+  margin-top: 20px;
   font-size: 14px;
-  color: #606266;
+  color: #6b7280;
 }
 
 .login-link a {
-  color: #667eea;
+  color: #09b572;
   text-decoration: none;
+  font-weight: 500;
 }
 
 .login-link a:hover {
-  text-decoration: underline;
+  color: #07a065;
 }
 </style>

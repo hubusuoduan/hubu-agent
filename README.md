@@ -1,19 +1,20 @@
-# Hubu Agent - 智能问答系统
+# Hubu Agent - 智能对话助手
 
 ## 项目简介
-Hubu Agent 是一个基于 LangGraph 的智能问答系统，集成了 RAG（检索增强生成）、知识库管理、用户认证等功能，支持多轮对话和工具调用。
+
+Hubu Agent 是一个基于 LangGraph 的智能对话助手，集成了 RAG 检索增强生成、长期记忆、知识库管理、多工具调用等能力，支持多轮对话和流式输出。
 
 ## 技术栈
 
 ### 后端
 - **框架**: FastAPI + Uvicorn
 - **Agent 框架**: LangGraph + LangChain
-- **大语言模型**: Qwen3-VL (DashScope)
-- **向量数据库**: Milvus
-- **关系数据库**: MySQL + SQLModel
-- **缓存**: Redis
-- **认证**: JWT + PyJWT
-- **文档解析**: unstructured, pypdf, docx2txt
+- **大语言模型**: OpenAI 兼容 API（默认 Qwen/DashScope）
+- **向量数据库**: Milvus 2.4+
+- **关系数据库**: MySQL 8.0+ (SQLModel + aiomysql)
+- **缓存**: Redis 6.0+
+- **认证**: JWT (PyJWT)
+- **文档解析**: pypdf, docx2txt, python-pptx, pandas, BeautifulSoup4, striprtf
 - **依赖管理**: Poetry
 
 ### 前端
@@ -25,55 +26,135 @@ Hubu Agent 是一个基于 LangGraph 的智能问答系统，集成了 RAG（检
 
 ## 核心功能
 
-- ✅ **智能对话**: 基于 LangGraph 的多轮对话系统
-- ✅ **RAG 知识库**: 支持文档上传、解析、向量化存储和检索
-- ✅ **用户认证**: JWT Token 认证，支持注册/登录
-- ✅ **对话历史**: MySQL 持久化存储，Redis 缓存加速
-- ✅ **工具调用**: 支持天气查询、网络搜索等外部工具
-- ✅ **流式输出**: Server-Sent Events (SSE) 实时响应
+### 🤖 智能对话
+- 基于 LangGraph 工作流的多轮对话系统
+- 工作流：RAG 检索 → 长期记忆 → 历史管理 → ChatAgent → 记忆提取
+- 支持流式输出（SSE）和非流式输出
+- 支持文件上传并在对话中解析文件内容
+
+### 🧠 长期记忆
+- 基于 Milvus 向量数据库的长期记忆存储
+- 自动从对话中提取记忆（偏好/事实/洞察）
+- 记忆去重（基于向量相似度）
+- 支持手动添加、编辑、删除记忆
+- 记忆来源追溯
+
+### 📚 RAG 知识库
+- 支持创建、删除知识库
+- 文档上传自动解析、分块、向量化索引
+- 支持 13 种文档格式：txt, md, pdf, docx, html, csv, json, xlsx, pptx, rtf, xml 等
+- 向量检索 + Reranker 重排序
+- RAG 查询 API
+
+### 🔧 工具调用（8 个内置工具）
+| 工具 | 功能 |
+|------|------|
+| get_weather | 天气查询 |
+| web_search | 网络搜索 |
+| web_scraper | 网页抓取 |
+| knowledge_search | 知识库搜索 |
+| knowledge_list | 知识库列表 |
+| code_runner | 代码执行 |
+| report_generator | 报告生成（Markdown/HTML/TXT） |
+| chart_generator | 图表生成（PNG/SVG/HTML） |
+
+### 🔐 用户认证
+- JWT Token 认证
+- 用户注册/登录
+- 所有 API 接口鉴权保护
+
+### 💬 对话管理
+- 对话创建/列表/详情/改名/删除
+- 对话历史持久化存储（MySQL）
+- 历史消息加载（最近 10 条作为上下文）
+
+### 📊 报告管理
+- 报告文件下载（支持 Header/URL Token 双认证）
+- 报告列表/删除
+- 支持多种格式：Markdown, HTML, TXT, PNG, SVG 等
 
 ## 目录结构
 
 ```
 hubu-agent/
-├── backend/                    # 后端服务
+├── backend/                        # 后端服务
 │   ├── app/
-│   │   ├── api/               # API 路由 (v1/auth, v1/chat, v1/knowledge)
-│   │   ├── auth/              # JWT 认证模块
-│   │   ├── core/              # 核心逻辑
-│   │   │   ├── agents/        # Agent 定义
-│   │   │   ── graph/         # LangGraph 工作流
-│   │   ├── database/          # 数据库层
-│   │   │   ├── dao/           # 数据访问对象
-│   │   │   ── models/        # 数据模型
-│   │   ├── schemas/           # Pydantic 数据校验
-│   │   ├── services/          # 业务逻辑
-│   │   │   ├── rag/           # RAG 相关服务
-│   │   │   └── llm_service.py # LLM 调用服务
-│   │   ├── tools/             # 工具定义 (天气、搜索)
-│   │   ├── config.py          # 配置管理
-│   │   └── main.py            # 应用入口
-│   ├── test/                  # 测试脚本
-│   ├── .env                   # 环境变量配置
-│   ├── pyproject.toml         # Poetry 依赖配置
-│   └── README.md
-── frontend/                  # 前端应用
-│   ├── src/
-│   │   ├── apis/              # API 调用封装
-│   │   ├── pages/             # 页面组件
-│   │   │   ├── LoginPage.vue
-│   │   │   ├── ChatPage.vue
-│   │   │   └── KnowledgePage.vue
-│   │   ├── router/            # 路由配置
-│   │   ├── App.vue
-│   │   └── main.ts
-│   ├── package.json
-│   └── vite.config.ts
-├── docs/                      # 项目文档
+│   │   ├── api/v1/                 # API 路由
+│   │   │   ├── auth.py             # 认证接口（注册/登录）
+│   │   │   ├── chat.py             # 聊天接口（流式/非流式/文件上传）
+│   │   │   ├── dialog.py           # 对话管理接口
+│   │   │   ├── knowledge.py        # 知识库接口（CRUD/上传/查询）
+│   │   │   ├── memory.py           # 记忆管理接口（CRUD）
+│   │   │   ├── report.py           # 报告接口（下载/列表/删除）
+│   │   │   └── router.py           # 路由注册
+│   │   ├── auth/                   # JWT 认证模块
+│   │   ├── core/
+│   │   │   ├── agents/             # Agent 定义
+│   │   │   │   ├── chat_agent.py   # 聊天 Agent（create_react_agent）
+│   │   │   │   ├── memory_agent.py # 记忆 Agent
+│   │   │   │   └── summary_agent.py # 摘要 Agent
+│   │   │   └── graph/              # LangGraph 工作流
+│   │   │       ├── graph.py        # 工作流定义
+│   │   │       ├── state.py        # ChatState 状态定义
+│   │   │       └── nodes/          # 工作流节点
+│   │   │           ├── rag_node.py           # RAG 检索节点
+│   │   │           ├── memory_node.py        # 长期记忆检索节点
+│   │   │           ├── history_node.py       # 历史管理节点
+│   │   │           ├── chat_agent_node.py    # 聊天 Agent 节点
+│   │   │           └── memory_extract_node.py # 记忆提取节点
+│   │   ├── database/
+│   │   │   ├── models/             # 数据模型（User/Dialog/History/Knowledge/KnowledgeFile/Report）
+│   │   │   ├── dao/                # 数据访问层
+│   │   │   ├── engine.py           # 数据库引擎
+│   │   │   ├── init_db.py          # 数据库初始化
+│   │   │   └── session.py          # 会话管理
+│   │   ├── schemas/                # Pydantic 请求/响应模型
+│   │   ├── services/
+│   │   │   ├── auth_service.py     # 认证服务
+│   │   │   ├── llm_service.py      # LLM 服务封装
+│   │   │   ├── memory_service.py   # 长期记忆服务（Milvus）
+│   │   │   ├── redis_client.py     # Redis 客户端
+│   │   │   └── rag/                # RAG 检索增强生成
+│   │   │       ├── handler.py      # RAG 核心处理器
+│   │   │       ├── embedding.py    # 文本向量化
+│   │   │       ├── vector_store.py # 向量存储封装
+│   │   │       ├── reranker.py     # 重排序
+│   │   │       └── milvus_client.py # Milvus 客户端
+│   │   ├── tools/                  # Agent 工具（8 个）
+│   │   │   ├── __init__.py         # 工具注册中心
+│   │   │   ├── get_weather/        # 天气查询
+│   │   │   ├── web_search/         # 网络搜索
+│   │   │   ├── web_scraper/        # 网页抓取
+│   │   │   ├── knowledge_search/   # 知识库搜索
+│   │   │   ├── knowledge_list/     # 知识库列表
+│   │   │   ├── code_runner/        # 代码执行
+│   │   │   ├── report_generator/   # 报告生成
+│   │   │   └── chart_generator/    # 图表生成
+│   │   └── utils/
+│   │       ├── doc_parser.py       # 文档解析器（13 种格式）
+│   │       └── token_counter.py    # Token 计数器
+│   ├── pyproject.toml              # 依赖配置
+│   └── .env.example                # 环境变量示例
+├── frontend/
+│   └── src/
+│       ├── apis/                   # API 调用封装
+│       │   ├── request.ts          # Axios 封装
+│       │   ├── auth.ts             # 认证 API
+│       │   ├── chat.ts             # 聊天 API（含 SSE 流式处理）
+│       │   ├── knowledge.ts        # 知识库 API
+│       │   ├── memory.ts           # 记忆 API
+│       │   └── report.ts           # 报告 API
+│       ├── pages/                  # 页面组件
+│       │   ├── ChatPage.vue        # 聊天主页（流式输出/文件上传/思考过程展示）
+│       │   ├── KnowledgePage.vue   # 知识库管理
+│       │   ├── MemoryPage.vue      # 记忆管理（查看/添加/编辑/删除）
+│       │   ├── LoginPage.vue       # 登录
+│       │   └── RegisterPage.vue    # 注册
+│       └── router/index.ts         # 路由配置
+├── docs/                           # 项目文档
 ├── .gitignore
-├── pyproject.toml
-├── start_backend.bat          # Windows 后端启动脚本
-└── start_frontend.bat         # Windows 前端启动脚本
+├── start_backend.bat               # Windows 后端启动脚本
+└── start_frontend.bat              # Windows 前端启动脚本
 ```
 
 ## 快速开始
@@ -147,8 +228,19 @@ MILVUS_PORT=19530
 MILVUS_USER=
 MILVUS_PASSWORD=
 
-# DashScope API Key
-DASHSCOPE_API_KEY=your-api-key-here
+# LLM 配置（OpenAI 兼容 API）
+LLM_API_KEY=your-api-key-here
+LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_MODEL=qwen-plus
+
+# Embedding 配置
+EMBEDDING_MODEL=text-embedding-v3
+EMBEDDING_DIMENSION=1024
+
+# RAG 配置
+RAG_TOP_K=5
+RAG_MIN_SCORE=0.3
+RAG_RERANKER_TOP_N=10
 
 # JWT 配置
 SECRET_KEY=your-secret-key-here
@@ -156,7 +248,58 @@ ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```
 
+## API 接口一览
+
+### 认证
+- `POST /api/v1/auth/register` - 用户注册
+- `POST /api/v1/auth/login` - 用户登录
+
+### 聊天
+- `POST /api/v1/chat/message` - 发送消息（非流式）
+- `POST /api/v1/chat/stream-message` - 发送消息（SSE 流式）
+- `POST /api/v1/chat/upload-file` - 上传并解析文件
+- `GET /api/v1/chat/history/{dialog_id}` - 获取聊天历史
+
+### 对话管理
+- `POST /api/v1/dialog/create` - 创建对话
+- `GET /api/v1/dialog/list` - 对话列表
+- `GET /api/v1/dialog/{dialog_id}` - 对话详情
+- `PUT /api/v1/dialog/{dialog_id}/name` - 修改对话名称
+- `DELETE /api/v1/dialog/{dialog_id}` - 删除对话
+- `GET /api/v1/dialog/{dialog_id}/history` - 对话历史
+
+### 知识库
+- `POST /api/v1/knowledge/` - 创建知识库
+- `GET /api/v1/knowledge/` - 知识库列表
+- `GET /api/v1/knowledge/{id}` - 知识库详情
+- `DELETE /api/v1/knowledge/{id}` - 删除知识库
+- `POST /api/v1/knowledge/upload` - 上传文件到知识库
+- `POST /api/v1/knowledge/query` - RAG 查询
+
+### 记忆管理
+- `GET /api/v1/memory/` - 获取记忆列表
+- `POST /api/v1/memory/` - 手动添加记忆
+- `PUT /api/v1/memory/{memory_id}` - 更新记忆
+- `DELETE /api/v1/memory/{memory_id}` - 删除记忆
+
+### 报告
+- `GET /api/v1/report/download/{report_id}` - 下载报告
+- `GET /api/v1/report/list` - 报告列表
+- `DELETE /api/v1/report/{report_id}` - 删除报告
+
 ## 开发规范
+
+### 添加新工具
+1. 在 `backend/app/tools/` 下创建新目录，编写 `action.py`
+2. 在 `tools/__init__.py` 的 `AgentTools` 列表中注册
+
+### 添加新 API
+1. 在 `backend/app/api/v1/` 下创建新模块
+2. 在 `router.py` 中 `include_router` 注册
+
+### 添加新数据模型
+1. 在 `backend/app/database/models/` 下定义 SQLModel 模型
+2. 在 `init_db.py` 中注册
 
 ### 代码提交
 ```bash
@@ -165,36 +308,28 @@ git commit -m "feat: 功能描述"  # feat/fix/docs/style/refactor/test/chore
 git push
 ```
 
-### API 路由规范
-- `POST /api/v1/auth/register` - 用户注册
-- `POST /api/v1/auth/login` - 用户登录
-- `POST /api/v1/chat/completions` - 对话接口
-- `POST /api/v1/knowledge/` - 知识库管理
-
-## 项目文档
-
-详细文档请查看 [docs/](docs/) 目录：
-- [快速入门](docs/GETTING_STARTED.md)
-- [项目结构说明](docs/PROJECT_STRUCTURE.md)
-- [功能特性文档](docs/features/)
-
 ## 常见问题
 
 ### 1. 数据库连接失败
-确保 MySQL 服务已启动，并检查 `.env` 中的数据库配置。
+确保 MySQL 服务已启动，并检查 `.env` 中的 `DATABASE_URL` 配置。
 
 ### 2. Milvus 连接失败
-确保 Milvus 服务已启动，并检查认证配置。
+确保 Milvus 服务已启动，并检查 `MILVUS_HOST` 和 `MILVUS_PORT` 配置。
 
 ### 3. LLM 调用失败
-检查 `DASHSCOPE_API_KEY` 是否配置正确。
+检查 `LLM_API_KEY` 和 `LLM_BASE_URL` 是否配置正确。
+
+### 4. Redis 连接失败
+确保 Redis 服务已启动，检查 `REDIS_HOST` 和 `REDIS_PORT` 配置。
 
 ## 技术文档
 
 - [FastAPI 官方文档](https://fastapi.tiangolo.com/)
 - [LangGraph 文档](https://langchain-ai.github.io/langgraph/)
+- [LangChain 文档](https://python.langchain.com/)
 - [Vue 3 官方文档](https://cn.vuejs.org/)
 - [Milvus 文档](https://milvus.io/docs)
+- [Element Plus 文档](https://element-plus.org/)
 
 ## License
 
@@ -203,3 +338,4 @@ MIT
 ## 作者
 
 互补所短 <1879334164@qq.com>
+

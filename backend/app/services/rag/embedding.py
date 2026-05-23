@@ -40,8 +40,7 @@ async def get_embedding(query: Union[str, List[str]]) -> Union[List[float], List
                 for item in response.output['embeddings']
             ]
             
-            logger.debug(f"成功获取 {len(embeddings)} 个向量嵌入")
-            
+                        
             # 返回格式：单个字符串返回一维列表，列表返回二维列表
             return embeddings[0] if single else embeddings
         else:

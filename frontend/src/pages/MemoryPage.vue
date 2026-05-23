@@ -238,7 +238,7 @@ onMounted(() => {
 
 <style scoped>
 .memory-page {
-  padding: 24px;
+  padding: 32px;
   max-width: 900px;
   margin: 0 auto;
 }
@@ -252,14 +252,15 @@ onMounted(() => {
 
 .page-header h2 {
   margin: 0;
-  font-size: 24px;
-  color: #303133;
+  font-size: 22px;
+  color: #1f2937;
+  font-weight: 700;
 }
 
 .page-desc {
-  color: #909399;
+  color: #9ca3af;
   font-size: 14px;
-  margin: 0 0 20px 0;
+  margin: 0 0 24px 0;
 }
 
 .filter-bar {
@@ -271,7 +272,7 @@ onMounted(() => {
 
 .memory-count {
   font-size: 13px;
-  color: #909399;
+  color: #9ca3af;
 }
 
 .memory-list {
@@ -282,10 +283,13 @@ onMounted(() => {
 
 .memory-card {
   transition: all 0.2s ease;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
 }
 
 .memory-card:hover {
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  border-color: rgba(99, 102, 241, 0.2);
 }
 
 .memory-card :deep(.el-card__body) {
@@ -313,7 +317,7 @@ onMounted(() => {
 
 .memory-content {
   font-size: 15px;
-  color: #303133;
+  color: #1f2937;
   line-height: 1.6;
   word-break: break-word;
 }
@@ -324,7 +328,7 @@ onMounted(() => {
   margin-top: 8px;
   padding-left: 68px;
   font-size: 12px;
-  color: #c0c4cc;
+  color: #9ca3af;
 }
 
 .memory-actions {

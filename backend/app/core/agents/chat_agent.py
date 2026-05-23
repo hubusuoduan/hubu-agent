@@ -32,6 +32,7 @@ class ChatAgent:
 - 对话历史已经在messages中提供，你可以根据历史内容进行回复
 - 不要说"我无法保留对话历史"或"每次对话都是独立的"之类的话
 - 如果用户问你记得什么，可以根据历史消息回答"""
+
         self.tools = tools or []
 
         # 使用 create_react_agent 创建 Agent Executor
@@ -41,8 +42,10 @@ class ChatAgent:
             tools=self.tools,
             prompt=self.system_prompt
         )
+
         # 设置最大迭代次数，防止工具调用死循环
         self.agent_max_iterations = settings.AGENT_MAX_ITERATIONS
+
         logger.info(f"ChatAgent 初始化成功，加载了 {len(self.tools)} 个工具")
 
     def _build_messages(
@@ -149,6 +152,7 @@ class ChatAgent:
                 config={"recursion_limit": self.agent_max_iterations}
             ):
                 kind = event["event"]
+
                 if kind == "on_chat_model_stream":
                     content = event["data"]["chunk"].content
                     if content:

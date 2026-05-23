@@ -5,7 +5,7 @@ import json
 import os
 import tempfile
 
-from app.core.graph.graph import run_chat_graph, run_stream_chat_graph
+from app.core.graph.graph import run_chat_graph, run_stream_chat_graph, run_stream_chat_graph_with_trace
 from app.database.dao.history_dao import HistoryDao
 from app.database.dao.dialog_dao import DialogDao
 from app.database.session import get_async_session
@@ -258,8 +258,8 @@ async def send_stream_message(
         async def generate_stream():
             full_response = ""
             try:
-                # 使用封装好的流式 Graph 函数
-                async for event in run_stream_chat_graph(
+                # 使用带节点追踪的流式 Graph 函数
+                async for event in run_stream_chat_graph_with_trace(
                     user_input=user_input,
                     session_id=dialog_id,
                     user_id=current_user.id,
@@ -269,7 +269,7 @@ async def send_stream_message(
                         event_type = event.get("type", "")
                         if event_type == "content":
                             full_response += event.get("content", "")
-                        # 将结构化事件发送给前端
+                        # 将所有结构化事件（含节点追踪）发送给前端
                         data = json.dumps(event, ensure_ascii=False)
                         yield f"data: {data}\n\n"
 

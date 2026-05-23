@@ -30,12 +30,27 @@ export interface ThinkingEvent {
   output?: string
 }
 
+// 节点追踪事件类型
+export interface NodeEvent {
+  type: 'node_start' | 'node_end' | 'node_error' | 'workflow_done'
+  node?: string
+  display_name?: string
+  duration_ms?: number
+  input_summary?: string
+  output_summary?: string
+  error?: string
+  nodes?: string[]
+  total_duration_ms?: number
+  timestamp?: number
+}
+
 export const sendStreamMessage = async (
   data: ChatMessage,
   onChunk: (chunk: string) => void,
   onComplete: (dialogId?: string) => void,
   onError: (error: Error) => void,
-  onEvent?: (event: ThinkingEvent) => void
+  onEvent?: (event: ThinkingEvent) => void,
+  onNodeEvent?: (event: NodeEvent) => void
 ) => {
   try {
     // 创建新的 AbortController
@@ -96,8 +111,12 @@ export const sendStreamMessage = async (
               if (parsed.type === 'content' && parsed.content) {
                 onChunk(parsed.content)
               }
-              // 所有非 content 事件都通过 onEvent 回调传递
-              if (parsed.type !== 'content' && onEvent) {
+              // 节点追踪事件通过 onNodeEvent 回调传递
+              if (['node_start', 'node_end', 'node_error', 'workflow_done'].includes(parsed.type) && onNodeEvent) {
+                onNodeEvent(parsed)
+              }
+              // 思考过程事件通过 onEvent 回调传递
+              else if (parsed.type !== 'content' && parsed.type !== 'node_start' && parsed.type !== 'node_end' && parsed.type !== 'node_error' && parsed.type !== 'workflow_done' && onEvent) {
                 onEvent(parsed)
               }
             } else if (parsed.content) {

@@ -3,7 +3,7 @@ import router from '../router'
 
 const request = axios.create({
   baseURL: '/api/v1',
-  timeout: 30000
+  timeout: 120000  // 上传文件等操作需要更长时间
 })
 
 // 标记是否正在刷新token
@@ -56,12 +56,36 @@ const rejectPendingRequests = (error: any) => {
   pendingRequests = []
 }
 
+// 解析JWT Token获取过期时间
+const getTokenExpireTime = (token: string): number | null => {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return payload.exp ? payload.exp * 1000 : null  // 转为毫秒
+  } catch {
+    return null
+  }
+}
+
+// Token提前刷新阈值：过期前5分钟刷新
+const REFRESH_THRESHOLD = 5 * 60 * 1000
+
 // 请求拦截器
 request.interceptors.request.use(
-  config => {
+  async config => {
     const token = localStorage.getItem('access_token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
+
+      // 主动检测Token即将过期，提前刷新
+      const expireTime = getTokenExpireTime(token)
+      if (expireTime && Date.now() > expireTime - REFRESH_THRESHOLD && !isRefreshing) {
+        try {
+          const newToken = await refreshToken()
+          config.headers.Authorization = `Bearer ${newToken}`
+        } catch {
+          // 静默失败，让响应拦截器处理401
+        }
+      }
     }
     return config
   },

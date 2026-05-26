@@ -4,11 +4,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.config import settings
+from app.core.logging import setup_logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    # 初始化日志配置
+    setup_logging()
+
     # 启动时执行
     logger.info("正在启动 Hubu Agent...")
     logger.info(f"服务器配置: {settings.APP_NAME} v{settings.APP_VERSION}")
@@ -20,6 +24,13 @@ async def lifespan(app: FastAPI):
         logger.info("数据库表初始化完成")
     except Exception as e:
         logger.error(f"数据库表初始化失败: {e}")
+
+    # 初始化动态配置系统
+    try:
+        from app.config import init_dynamic_settings
+        init_dynamic_settings()
+    except Exception as e:
+        logger.error(f"动态配置系统初始化失败: {e}")
     
     yield
     

@@ -1,5 +1,6 @@
 """对话管理API"""
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
+from typing import List
 from loguru import logger
 
 from app.database.dao.dialog_dao import DialogDao
@@ -11,6 +12,8 @@ from app.database.models.user import User
 from app.schemas.dialog import (
     CreateDialogRequest,
     UpdateDialogNameRequest,
+    UpdateDialogPinRequest,
+    UpdateDialogStarRequest,
 )
 
 router = APIRouter()
@@ -70,7 +73,10 @@ async def get_dialog_list(
                     "dialog_id": d.dialog_id,
                     "name": d.name,
                     "create_time": d.create_time.isoformat() if d.create_time else None,
-                    "update_time": d.update_time.isoformat() if d.update_time else None
+                    "update_time": d.update_time.isoformat() if d.update_time else None,
+                    "is_pinned": bool(d.is_pinned),
+                    "is_starred": bool(d.is_starred),
+                    "pinned_at": d.pinned_at.isoformat() if d.pinned_at else None
                 }
                 for d in dialogs
             ],
@@ -179,6 +185,96 @@ async def delete_dialog(
         raise HTTPException(status_code=500, detail=f"删除对话失败: {str(e)}")
 
 
+@router.delete("/{dialog_id}/messages", summary="批量删除对话消息")
+async def batch_delete_messages(
+    dialog_id: str,
+    message_ids: List[str] = Query(..., description="要删除的消息ID列表"),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    批量删除对话中的指定消息
+
+    - **dialog_id**: 对话ID
+    - **message_ids**: 要删除的消息ID列表（query参数，多个值）
+    """
+    try:
+        # 权限校验
+        dialog = await DialogDao.get_dialog_by_id(dialog_id)
+        if not dialog:
+            raise HTTPException(status_code=404, detail="对话不存在")
+        if dialog.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="无权操作该对话")
+
+        deleted_count = await HistoryDao.delete_messages_by_ids(dialog_id, message_ids)
+        return {
+            "dialog_id": dialog_id,
+            "deleted_count": deleted_count
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"批量删除消息失败: {e}")
+        raise HTTPException(status_code=500, detail=f"批量删除消息失败: {str(e)}")
+
+
+@router.put("/{dialog_id}/pin", summary="更新对话置顶状态")
+async def update_dialog_pin(
+    dialog_id: str,
+    request: UpdateDialogPinRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    try:
+        dialog = await DialogDao.get_dialog_by_id(dialog_id)
+        if not dialog:
+            raise HTTPException(status_code=404, detail="对话不存在")
+        if dialog.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="无权操作该对话")
+
+        updated = await DialogDao.update_dialog_pin(dialog_id, request.is_pinned)
+        if not updated:
+            raise HTTPException(status_code=404, detail="对话不存在")
+        return {
+            "dialog_id": updated.dialog_id,
+            "is_pinned": bool(updated.is_pinned),
+            "pinned_at": updated.pinned_at.isoformat() if updated.pinned_at else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新对话置顶状态失败: {e}")
+        raise HTTPException(status_code=500, detail=f"更新对话置顶状态失败: {str(e)}")
+
+
+@router.put("/{dialog_id}/star", summary="更新对话收藏状态")
+async def update_dialog_star(
+    dialog_id: str,
+    request: UpdateDialogStarRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    try:
+        dialog = await DialogDao.get_dialog_by_id(dialog_id)
+        if not dialog:
+            raise HTTPException(status_code=404, detail="对话不存在")
+        if dialog.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="无权操作该对话")
+
+        updated = await DialogDao.update_dialog_star(dialog_id, request.is_starred)
+        if not updated:
+            raise HTTPException(status_code=404, detail="对话不存在")
+        return {
+            "dialog_id": updated.dialog_id,
+            "is_starred": bool(updated.is_starred)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新对话收藏状态失败: {e}")
+        raise HTTPException(status_code=500, detail=f"更新对话收藏状态失败: {str(e)}")
+
+
 @router.get("/{dialog_id}/history", summary="获取对话历史")
 async def get_dialog_history(
     dialog_id: str,
@@ -206,6 +302,7 @@ async def get_dialog_history(
         )
         messages = [
             {
+                "id": h.id,
                 "role": h.role,
                 "content": h.content,
                 "create_time": h.create_time.isoformat() if h.create_time else None

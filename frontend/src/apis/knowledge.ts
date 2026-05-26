@@ -73,6 +73,21 @@ export const uploadFile = (knowledgeId: string, file: File) => {
   })
 }
 
+// 获取知识库文件列表
+export const getKnowledgeFiles = (knowledgeId: string) => {
+  return request.get<{ total: number; items: KnowledgeFile[] }>(`/knowledge/${knowledgeId}/files`)
+}
+
+// 删除知识库文件（同时删除关联的向量数据）
+export const deleteKnowledgeFile = (knowledgeId: string, fileId: string) => {
+  return request.delete<{ message: string }>(`/knowledge/${knowledgeId}/files/${fileId}`)
+}
+
+// 更新知识库信息
+export const updateKnowledge = (knowledgeId: string, data: KnowledgeCreate) => {
+  return request.put<Knowledge>(`/knowledge/${knowledgeId}`, data)
+}
+
 // RAG 查询
 export const ragQuery = (data: RAGQueryRequest) => {
   return request.post<RAGQueryResponse>('/knowledge/query', data)

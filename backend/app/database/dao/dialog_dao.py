@@ -76,7 +76,7 @@ class DialogDao:
             statement = (
                 select(DialogTable)
                 .where(DialogTable.user_id == user_id)
-                .order_by(DialogTable.update_time.desc())
+                .order_by(DialogTable.is_pinned.desc(), DialogTable.pinned_at.desc(), DialogTable.update_time.desc())
                 .limit(limit)
             )
             result = await session.execute(statement)
@@ -175,3 +175,61 @@ class DialogDao:
                 return True
 
             return False
+
+    @classmethod
+    async def update_dialog_pin(cls, dialog_id: str, is_pinned: bool) -> Optional[DialogTable]:
+        """
+        更新对话置顶状态
+
+        Args:
+            dialog_id: 对话ID
+            is_pinned: 是否置顶
+
+        Returns:
+            Optional[DialogTable]: 更新后的对话记录
+        """
+        from datetime import datetime
+        async with AsyncSession(async_engine) as session:
+            statement = select(DialogTable).where(
+                DialogTable.dialog_id == dialog_id
+            )
+            result = await session.execute(statement)
+            dialog = result.scalars().first()
+
+            if dialog:
+                dialog.is_pinned = is_pinned
+                dialog.pinned_at = datetime.now() if is_pinned else None
+                session.add(dialog)
+                await session.commit()
+                await session.refresh(dialog)
+                logger.info(f"更新对话置顶状态: {dialog_id} -> {is_pinned}")
+                return dialog
+            return None
+
+    @classmethod
+    async def update_dialog_star(cls, dialog_id: str, is_starred: bool) -> Optional[DialogTable]:
+        """
+        更新对话收藏状态
+
+        Args:
+            dialog_id: 对话ID
+            is_starred: 是否收藏
+
+        Returns:
+            Optional[DialogTable]: 更新后的对话记录
+        """
+        async with AsyncSession(async_engine) as session:
+            statement = select(DialogTable).where(
+                DialogTable.dialog_id == dialog_id
+            )
+            result = await session.execute(statement)
+            dialog = result.scalars().first()
+
+            if dialog:
+                dialog.is_starred = is_starred
+                session.add(dialog)
+                await session.commit()
+                await session.refresh(dialog)
+                logger.info(f"更新对话收藏状态: {dialog_id} -> {is_starred}")
+                return dialog
+            return None

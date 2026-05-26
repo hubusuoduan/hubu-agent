@@ -3,6 +3,7 @@ from typing import List, Dict, Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from loguru import logger
+from app.prompts import load_prompt
 
 
 class SummaryAgent:
@@ -19,25 +20,7 @@ class SummaryAgent:
             model: LLM模型实例
         """
         self.model = model
-        self.system_prompt = """你是一个专业的对话摘要生成器。
-
-你的任务是：
-1. 分析用户和助手的对话历史
-2. 提取关键信息，包括：
-   - 用户的主要意图和问题
-   - 重要的事实和数据
-   - 达成的结论或决定
-   - 待解决的问题
-3. 用简洁的语言生成摘要（200字以内）
-4. 保持客观，不要添加原文没有的信息
-5. 使用中文
-
-输出格式：
-[用户意图] xxx
-[关键事实] xxx
-[重要结论] xxx
-[待解决问题] xxx
-"""
+        self.system_prompt = load_prompt("summary_agent")
 
     async def summarize(self, messages: List[Dict]) -> Optional[str]:
         """
@@ -60,11 +43,13 @@ class SummaryAgent:
 
 请按照要求的格式输出摘要。"""
 
-            # 调用模型生成摘要
-            response = await self.model.ainvoke([
-                SystemMessage(content=self.system_prompt),
-                HumanMessage(content=user_prompt)
-            ])
+            # 调用模型生成摘要，注入 Token 采集 Callback
+            from app.callbacks import usage_metadata_callback
+            response = await self.model.ainvoke(
+                [SystemMessage(content=self.system_prompt),
+                 HumanMessage(content=user_prompt)],
+                config={"callbacks": [usage_metadata_callback]}
+            )
 
             summary = response.content
             logger.info(f"摘要 Agent 生成成功，摘要长度: {len(summary)}")

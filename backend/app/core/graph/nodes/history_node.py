@@ -18,11 +18,7 @@ def get_summary_agent() -> SummaryAgent:
     """获取全局 SummaryAgent 实例（单例模式）"""
     global _summary_agent
     if _summary_agent is None:
-        model = LLMService.get_model(
-            api_key=settings.LLM_API_KEY,
-            base_url=settings.LLM_BASE_URL,
-            model_name=settings.LLM_MODEL
-        )
+        model = LLMService.get_model()
         _summary_agent = SummaryAgent(model=model)
         logger.info("创建全局 SummaryAgent 实例")
     return _summary_agent

@@ -7,7 +7,7 @@ import json
 import os
 import tempfile
 
-from app.core.graph.graph import run_chat_graph, run_stream_chat_graph, run_stream_chat_graph_with_trace
+from app.core.graph.graph import run_stream_chat_graph_with_trace
 from app.core.graph.nodes.memory_extract_node import memory_extract_node
 from app.database.dao.history_dao import HistoryDao
 from app.database.dao.dialog_dao import DialogDao
@@ -15,7 +15,7 @@ from app.database.session import get_async_session
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.api.dependencies import get_current_user
 from app.database.models.user import User
-from app.schemas.chat import ChatMessage, ChatResponse
+from app.schemas.chat import ChatMessage, TruncatedMessage
 from fastapi.responses import StreamingResponse
 
 router = APIRouter()
@@ -93,120 +93,6 @@ async def upload_file(
         raise HTTPException(status_code=500, detail=f"文件上传失败: {str(e)}")
 
 
-@router.post("/message", response_model=ChatResponse, summary="发送聊天消息")
-async def send_message(
-    chat_message: ChatMessage,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_async_session)
-):
-    """
-    发送聊天消息（需要认证）
-
-    - **message**: 用户发送的消息
-    - **dialog_id**: 对话ID（可选，为空则自动创建新对话）
-
-    返回AI的回复和对话ID
-    """
-    try:
-        # 获取或创建对话
-        dialog_id = chat_message.dialog_id
-        if not dialog_id:
-            # 自动创建新对话，用消息前20字作为名称
-            name = chat_message.message[:20] + ("..." if len(chat_message.message) > 20 else "")
-            dialog = await DialogDao.create_dialog(name=name, user_id=current_user.id)
-            dialog_id = dialog.dialog_id
-        else:
-            # 校验对话存在且属于当前用户
-            dialog = await DialogDao.get_dialog_by_id(dialog_id)
-            if not dialog:
-                raise HTTPException(status_code=404, detail="对话不存在")
-            if dialog.user_id != current_user.id:
-                raise HTTPException(status_code=403, detail="无权访问该对话")
-
-        # 保存用户消息到数据库（包含文件信息）
-        try:
-            db_content = chat_message.message
-            if chat_message.file_content:
-                db_content = f"[上传了文件]\n{chat_message.message}"
-            await HistoryDao.create_history(
-                dialog_id=dialog_id,
-                role="user",
-                content=db_content
-            )
-        except Exception as db_error:
-            logger.warning(f"保存用户消息失败: {db_error}")
-
-        # 加载历史消息（最近10条）并转换为 LangChain 消息格式
-        try:
-            histories = await HistoryDao.get_recent_messages(
-                dialog_id=dialog_id,
-                k=10
-            )
-            from langchain_core.messages import HumanMessage, AIMessage
-            messages = []
-            for h in histories:
-                if h.role == "user":
-                    messages.append(HumanMessage(content=h.content))
-                elif h.role == "assistant":
-                    messages.append(AIMessage(content=h.content))
-        except Exception as db_error:
-            logger.warning(f"加载历史消息失败: {db_error}")
-            messages = []
-
-        # 构建用户输入（包含文件内容）
-        user_input = chat_message.message
-        if chat_message.file_content:
-            user_input = f"以下是文件内容：\n\n{chat_message.file_content}\n\n---\n\n{chat_message.message}"
-
-        # 运行 Chat Graph（RAG 节点会自动检索所有知识库，记忆节点会检索用户长期记忆）
-        graph_result = await run_chat_graph(
-            user_input=user_input,
-            session_id=dialog_id,
-            user_id=current_user.id,
-            messages=messages
-        )
-
-        response_text = graph_result.get("response", "")
-
-        # 保存AI回复到数据库
-        try:
-            await HistoryDao.create_history(
-                dialog_id=dialog_id,
-                role="assistant",
-                content=response_text
-            )
-        except Exception as db_error:
-            logger.warning(f"保存AI回复失败: {db_error}")
-
-        # 异步触发记忆提取（不阻塞响应）
-        async def _do_extract():
-            try:
-                state = {
-                    "messages": messages,
-                    "user_input": user_input,
-                    "context": None,
-                    "session_id": dialog_id,
-                    "user_id": current_user.id,
-                    "response": response_text
-                }
-                await memory_extract_node(state)
-            except Exception as e:
-                logger.error(f"异步记忆提取失败: {e}")
-
-        asyncio.create_task(_do_extract())
-
-        return ChatResponse(
-            response=response_text,
-            dialog_id=dialog_id
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"处理消息失败: {e}")
-        raise HTTPException(status_code=500, detail=f"处理消息失败: {str(e)}")
-
-
 @router.post("/stream-message", summary="发送聊天消息（流式输出）")
 async def send_stream_message(
     chat_message: ChatMessage,
@@ -276,6 +162,14 @@ async def send_stream_message(
         async def generate_stream():
             full_response = ""
             try:
+                # 尽早发送 dialog_id，让前端在停止生成时能保存截断消息
+                init_data = json.dumps({"type": "dialog_init", "dialog_id": dialog_id}, ensure_ascii=False)
+                yield f"data: {init_data}\n\n"
+
+                # 设置 ContextVar，让 Token 采集 Callback 能获取 user_id
+                from app.callbacks import current_user_id
+                current_user_id.set(str(current_user.id))
+
                 # 使用带节点追踪的流式 Graph 函数
                 async for event in run_stream_chat_graph_with_trace(
                     user_input=user_input,
@@ -346,4 +240,39 @@ async def send_stream_message(
     except Exception as e:
         logger.error(f"处理流式消息失败: {e}")
         raise HTTPException(status_code=500, detail=f"处理流式消息失败: {str(e)}")
+
+
+@router.post("/save-truncated", summary="保存被截断的AI消息")
+async def save_truncated_message(
+    truncated: TruncatedMessage,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    当用户停止生成时，前端将已接收的AI消息内容通过此接口保存到后端。
+
+    - **dialog_id**: 对话ID
+    - **content**: 被截断的AI消息内容
+    """
+    try:
+        # 校验对话存在且属于当前用户
+        dialog = await DialogDao.get_dialog_by_id(truncated.dialog_id)
+        if not dialog:
+            raise HTTPException(status_code=404, detail="对话不存在")
+        if dialog.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="无权访问该对话")
+
+        # 保存截断的AI消息
+        history = await HistoryDao.create_history(
+            dialog_id=truncated.dialog_id,
+            role="assistant",
+            content=truncated.content
+        )
+        logger.info(f"保存截断消息成功: dialog_id={truncated.dialog_id}, 长度={len(truncated.content)}")
+        return {"id": history.id, "dialog_id": truncated.dialog_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"保存截断消息失败: {e}")
+        raise HTTPException(status_code=500, detail=f"保存截断消息失败: {str(e)}")
 

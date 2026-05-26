@@ -11,7 +11,7 @@ class AuthConfig(BaseModel):
     algorithm: str = "HS256"
     
     # Token过期时间
-    access_token_expires: timedelta = timedelta(minutes=30)
+    access_token_expires: timedelta = timedelta(hours=2)
     refresh_token_expires: timedelta = timedelta(days=7)
     
     # Token存储位置

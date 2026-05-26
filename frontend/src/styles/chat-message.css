@@ -1,0 +1,375 @@
+
+/* ========== 消息通用 ========== */
+.message {
+  margin-bottom: 24px;
+  display: flex;
+  gap: 12px;
+  animation: fadeIn 0.3s ease-out;
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+.message.delete-mode {
+  cursor: pointer;
+  border-radius: 12px;
+  padding: 8px;
+  margin-left: -8px;
+  margin-right: -8px;
+}
+
+.message.delete-mode:hover {
+  background-color: rgba(239, 68, 68, 0.04);
+}
+
+.message.delete-mode.selected {
+  background-color: rgba(239, 68, 68, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.2);
+}
+
+.delete-checkbox {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 8px;
+  flex-shrink: 0;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========== AI 消息 ========== */
+.ai-avatar {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.ai-avatar-inner {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #09b572, #059669);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 2px 8px rgba(9, 181, 114, 0.25);
+}
+
+.ai-body {
+  flex: 1;
+  min-width: 0;
+  max-width: 800px;
+}
+
+/* AI 消息操作栏 */
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 8px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.message:hover .message-actions {
+  opacity: 1;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.action-btn:hover {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.copy-btn:hover {
+  color: #09b572;
+  background: rgba(9, 181, 114, 0.08);
+}
+
+.regenerate-btn:hover {
+  color: #09b572;
+  background: rgba(9, 181, 114, 0.08);
+}
+
+.delete-msg-btn:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* ========== 用户消息 ========== */
+.message.user {
+  flex-direction: row;
+  justify-content: flex-end;
+}
+
+.user-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.user-bubble {
+  background: linear-gradient(135deg, #09b572, #07a065);
+  color: white;
+  border-radius: 18px 18px 4px 18px;
+  padding: 10px 16px;
+  max-width: 520px;
+  box-shadow: 0 2px 8px rgba(9, 181, 114, 0.2);
+}
+
+.user-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  padding-right: 4px;
+  width: 100%;
+}
+
+.user-time {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.user-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.message.user:hover .user-actions {
+  opacity: 1;
+}
+
+.user-actions .action-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.user-actions .action-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.user-actions .copy-btn:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.user-actions .delete-msg-btn:hover {
+  color: #fca5a5;
+}
+
+.user-avatar {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.user-avatar :deep(.el-avatar) {
+  background: #6366f1;
+}
+
+/* ========== 消息文本通用样式 ========== */
+.message-text {
+  font-size: 15px;
+  line-height: 1.75;
+  word-break: break-word;
+}
+
+.message-text :deep(pre) {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  padding: 16px;
+  border-radius: 10px;
+  overflow-x: auto;
+  margin: 8px 0;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.message-text :deep(code) {
+  font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+}
+
+.message-text :deep(:not(pre) > code) {
+  background: rgba(9, 181, 114, 0.08);
+  color: #09b572;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.user-bubble .message-text :deep(:not(pre) > code) {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.message-text :deep(p) {
+  margin: 4px 0;
+}
+
+.message-text :deep(ul), .message-text :deep(ol) {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+
+.message-text :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.message-text :deep(th), .message-text :deep(td) {
+  border: 1px solid #e5e7eb;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.message-text :deep(th) {
+  background-color: #f3f4f6;
+  font-weight: 600;
+  color: #374151;
+}
+
+.message-text :deep(td) {
+  color: #4b5563;
+}
+
+.user-bubble .message-text :deep(th) {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.user-bubble .message-text :deep(td) {
+  color: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.user-bubble .message-text :deep(table a) {
+  color: white;
+}
+
+/* 图表预览区域 */
+.message-text :deep(.file-card-preview) {
+  margin: 8px 0 4px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s;
+}
+.message-text :deep(.file-card-preview:hover) {
+  box-shadow: 0 4px 16px rgba(9, 181, 114, 0.2);
+  border-color: rgba(9, 181, 114, 0.3);
+}
+.message-text :deep(.file-card-preview img) {
+  display: block;
+  width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+  background: #fafbfc;
+  cursor: pointer;
+}
+.message-text :deep(.file-card-preview-loading) {
+  padding: 28px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+  background: #fafbfc;
+}
+.message-text :deep(.file-card-preview-error) {
+  padding: 16px;
+  text-align: center;
+  color: #ef4444;
+  font-size: 13px;
+  background: #fef2f2;
+}
+
+/* 报告占位容器 */
+.message-text :deep(.file-card-placeholder) {
+  border-radius: 12px;
+  margin: 8px 0;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+  background: #fafbfc;
+}
+
+/* 文件下载卡片 */
+.message-text :deep(.file-download-card) {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, #fafbfc 0%, #f3f4f6 100%);
+  border-radius: 12px;
+  margin: 8px 0;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s;
+}
+
+.message-text :deep(.file-download-card:hover) {
+  border-color: rgba(9, 181, 114, 0.3);
+  box-shadow: 0 2px 8px rgba(9, 181, 114, 0.1);
+}
+
+.message-text :deep(.file-card-icon) {
+  font-size: 28px;
+}
+
+.message-text :deep(.file-card-info) {
+  flex: 1;
+}
+
+.message-text :deep(.file-card-title) {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1f2937;
+}
+
+.message-text :deep(.file-card-desc) {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-top: 2px;
+}
+
+.message-text :deep(.file-card-btn) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 20px;
+  background: #09b572;
+  color: white !important;
+  border-radius: 8px;
+  border: none;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.message-text :deep(.file-card-btn:hover) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(9, 181, 114, 0.35);
+}

@@ -11,7 +11,8 @@ class ChatMessage(BaseModel):
     file_content: Optional[str] = Field(default=None, description="文件解析后的内容")
 
 
-class ChatResponse(BaseModel):
-    """聊天响应"""
-    response: str = Field(description="AI回复内容")
+class TruncatedMessage(BaseModel):
+    """截断消息保存请求"""
     dialog_id: str = Field(description="对话ID")
+    content: str = Field(min_length=1, description="被截断的AI消息内容")
+

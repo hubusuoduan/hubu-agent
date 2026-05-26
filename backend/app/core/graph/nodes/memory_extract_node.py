@@ -17,11 +17,7 @@ def get_memory_agent() -> MemoryAgent:
     """获取全局 MemoryAgent 实例（单例模式）"""
     global _memory_agent
     if _memory_agent is None:
-        model = LLMService.get_model(
-            api_key=settings.LLM_API_KEY,
-            base_url=settings.LLM_BASE_URL,
-            model_name=settings.LLM_MODEL
-        )
+        model = LLMService.get_model()
         _memory_agent = MemoryAgent(model=model)
         logger.info("创建全局 MemoryAgent 实例")
     return _memory_agent

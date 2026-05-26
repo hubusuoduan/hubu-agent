@@ -91,6 +91,7 @@ poetry.lock
 backend/.venv/
 backend/logs/
 backend/reports/
+backend/output/
 backend/*.db
 backend/*.sqlite
 

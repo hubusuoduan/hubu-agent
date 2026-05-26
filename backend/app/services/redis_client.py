@@ -51,7 +51,10 @@ class RedisClient:
         """
         try:
             client = cls.get_client()
-            result = client.setex(key, expiration, value)
+            if expiration > 0:
+                result = client.setex(key, expiration, value)
+            else:
+                result = client.set(key, value)
             logger.debug(f"设置Redis键: {key}")
             return result
         except Exception as e:

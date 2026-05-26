@@ -1,0 +1,47 @@
+
+/* ========== 全局重置 ========== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+#app {
+  font-family: 'Microsoft YaHei', Arial, sans-serif;
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+}
+
+/* ========== Element Plus 主题覆盖 ========== */
+:root {
+  --el-color-primary: #09b572;
+  --el-color-primary-light-3: #3cc88f;
+  --el-color-primary-light-5: #6ddaaa;
+  --el-color-primary-light-7: #9eedc5;
+  --el-color-primary-light-8: #b5f2d4;
+  --el-color-primary-light-9: #ccf7e3;
+  --el-color-primary-dark-2: #07925b;
+}
+
+.el-button--primary {
+  --el-button-bg-color: #09b572;
+  --el-button-border-color: #09b572;
+  --el-button-hover-bg-color: #07a065;
+  --el-button-hover-border-color: #07a065;
+  --el-button-active-bg-color: #07925b;
+  --el-button-active-border-color: #07925b;
+}
+
+.el-button--primary.is-plain {
+  --el-button-bg-color: #ecfaf3;
+  --el-button-border-color: #3cc88f;
+  --el-button-hover-bg-color: #09b572;
+  --el-button-hover-border-color: #09b572;
+  --el-button-hover-text-color: #ffffff;
+}
+
+.el-button--primary.is-text {
+  --el-button-hover-bg-color: rgba(9, 181, 114, 0.1);
+  --el-button-hover-text-color: #09b572;
+}

@@ -44,12 +44,25 @@ const props = defineProps<{
   totalDurationMs?: number
 }>()
 
-// 节点定义（固定布局）
+// 节点定义（并行 + 汇聚布局）
+// 三路并行：rag / memory / history_manager 同时执行
+// 汇聚到 merge 综合处理后，交给 stream_chat_agent
 const nodeDefinitions = [
-  { id: 'rag', label: 'RAG 检索', icon: '🔍', x: 300, y: 0 },
-  { id: 'memory', label: '长期记忆', icon: '🧠', x: 300, y: 100 },
-  { id: 'history_manager', label: '历史管理', icon: '📝', x: 300, y: 200 },
-  { id: 'stream_chat_agent', label: '对话 Agent', icon: '🤖', x: 300, y: 300 },
+  { id: 'rag', label: 'RAG 检索', icon: '🔍', x: 100, y: 0 },
+  { id: 'memory', label: '长期记忆', icon: '🧠', x: 300, y: 0 },
+  { id: 'history_manager', label: '历史管理', icon: '📝', x: 500, y: 0 },
+  { id: 'merge', label: '综合处理', icon: '🔗', x: 300, y: 130 },
+  { id: 'stream_chat_agent', label: '对话 Agent', icon: '🤖', x: 300, y: 260 },
+]
+
+// 边定义：三路并行扇出到 merge，merge 到 agent
+const edgeDefinitions = [
+  // 并行扇出
+  { source: 'rag', target: 'merge' },
+  { source: 'memory', target: 'merge' },
+  { source: 'history_manager', target: 'merge' },
+  // 串行
+  { source: 'merge', target: 'stream_chat_agent' },
 ]
 
 const nodes = computed(() =>
@@ -73,21 +86,18 @@ const nodes = computed(() =>
 )
 
 const edges = computed(() => {
-  const ids = nodeDefinitions.map((n) => n.id)
-  const result: any[] = []
-  for (let i = 0; i < ids.length - 1; i++) {
-    const sourceTrace = props.nodeTraces[ids[i]]
-    const targetTrace = props.nodeTraces[ids[i + 1]]
+  return edgeDefinitions.map((def) => {
+    const sourceTrace = props.nodeTraces[def.source]
+    const targetTrace = props.nodeTraces[def.target]
     const isActive = sourceTrace?.status === 'completed' && (targetTrace?.status === 'running' || targetTrace?.status === 'completed')
-    result.push({
-      id: `e-${ids[i]}-${ids[i + 1]}`,
-      source: ids[i],
-      target: ids[i + 1],
+    return {
+      id: `e-${def.source}-${def.target}`,
+      source: def.source,
+      target: def.target,
       animated: isActive,
       style: isActive ? { stroke: '#09b572', strokeWidth: 2 } : { stroke: '#d1d5db', strokeWidth: 1.5 },
-    })
-  }
-  return result
+    }
+  })
 })
 </script>
 

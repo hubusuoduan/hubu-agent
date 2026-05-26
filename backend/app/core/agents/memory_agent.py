@@ -1,9 +1,10 @@
 """记忆提取 Agent - 从对话中提取用户长期记忆"""
-import json
 from typing import List, Dict, Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from loguru import logger
+from app.prompts import load_prompt
+from app.utils.text import parse_json
 
 
 class MemoryAgent:
@@ -15,47 +16,7 @@ class MemoryAgent:
 
     def __init__(self, model: ChatOpenAI):
         self.model = model
-        self.system_prompt = """你是一个专业的用户记忆提取器。
-
-你的任务是分析用户和助手的对话，判断是否需要提取用户的长期记忆信息。
-
-需要提取的信息类型：
-1. **preference** - 用户偏好：如喜欢的技术栈、编程语言、工具等
-2. **fact** - 个人事实：如学校、专业、职业、身份等
-3. **insight** - 重要洞察：如项目需求、学习目标、工作计划等
-
-提取规则：
-- 只提取关于用户的信息，不要提取关于助手或通用知识的信息
-- 每条记忆应该是一个独立的、完整的事实陈述
-- 避免提取临时性的、一次性的信息（如"帮我查个天气"）
-- 避免提取过于宽泛的信息（如"用户在聊天"）
-- 优先提取可能在未来对话中有用的信息
-
-重要性评分规则（1-5分）：
-- 1分：几乎不重要，可能只用一次的信息
-- 2分：不太重要，偶尔可能有用
-- 3分：一般重要，有一定参考价值
-- 4分：比较重要，在多数对话中都有参考价值
-- 5分：非常重要，核心个人信息（如姓名、专业、关键偏好）
-
-你必须严格按以下 JSON 格式返回，不要返回其他内容：
-```json
-{
-    "should_save": true/false,
-    "memories": [
-        {"content": "用户是湖北大学计算机专业学生", "type": "fact", "importance": 5},
-        {"content": "用户偏好使用Python编程", "type": "preference", "importance": 4}
-    ]
-}
-```
-
-如果没有需要提取的信息，返回：
-```json
-{
-    "should_save": false,
-    "memories": []
-}
-```"""
+        self.system_prompt = load_prompt("memory_agent")
 
     async def extract(
         self,
@@ -91,15 +52,18 @@ class MemoryAgent:
 
 请返回 JSON 格式的结果。"""
 
-            response = await self.model.ainvoke([
-                SystemMessage(content=self.system_prompt),
-                HumanMessage(content=user_prompt)
-            ])
+            # 注入 Token 采集 Callback
+            from app.callbacks import usage_metadata_callback
+            response = await self.model.ainvoke(
+                [SystemMessage(content=self.system_prompt),
+                 HumanMessage(content=user_prompt)],
+                config={"callbacks": [usage_metadata_callback]}
+            )
 
             result_text = response.content.strip()
 
             # 尝试从返回文本中提取 JSON
-            result = self._parse_json(result_text)
+            result = parse_json(result_text)
 
             if result is None:
                 logger.warning(f"记忆提取 JSON 解析失败: {result_text[:100]}")
@@ -133,40 +97,3 @@ class MemoryAgent:
             logger.error(f"记忆提取失败: {e}")
             return None
 
-    def _parse_json(self, text: str) -> Optional[Dict]:
-        """从文本中解析 JSON
-
-        支持纯 JSON 和被 ```json ``` 包裹的格式
-
-        Args:
-            text: 待解析的文本
-
-        Returns:
-            解析后的字典，失败返回 None
-        """
-        # 尝试直接解析
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            pass
-
-        # 尝试提取 ```json ... ``` 中的内容
-        import re
-        pattern = r"```(?:json)?\s*\n?(.*?)\n?```"
-        match = re.search(pattern, text, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group(1).strip())
-            except json.JSONDecodeError:
-                pass
-
-        # 尝试找到第一个 { 和最后一个 } 之间的内容
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            try:
-                return json.loads(text[start:end + 1])
-            except json.JSONDecodeError:
-                pass
-
-        return None

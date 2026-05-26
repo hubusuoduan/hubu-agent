@@ -5,6 +5,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt import create_react_agent
 from loguru import logger
+from app.prompts import load_prompt
+from app.utils.format import format_tool_display_name
 
 
 class ChatAgent:
@@ -20,18 +22,7 @@ class ChatAgent:
             tools: 工具列表（可选）
         """
         self.model = model
-        self.system_prompt = system_prompt or """你是一个智能助手Hubu Agent。
-
-你的特点:
-- 友好、专业、善于倾听
-- 回答准确、简洁、有条理
-- 支持多轮对话，能够记住对话历史中的关键信息（如用户名字、偏好等）
-- 如果用户在之前的对话中提到过个人信息，你应该在后续对话中合理使用这些信息
-
-注意事项:
-- 对话历史已经在messages中提供，你可以根据历史内容进行回复
-- 不要说"我无法保留对话历史"或"每次对话都是独立的"之类的话
-- 如果用户问你记得什么，可以根据历史消息回答"""
+        self.system_prompt = system_prompt or load_prompt("chat_agent")
 
         self.tools = tools or []
 
@@ -95,38 +86,6 @@ class ChatAgent:
 
         return messages
 
-    async def run(self, user_input: str, history: Optional[List[dict]] = None, context: Optional[str] = None) -> str:
-        """
-        执行 ChatAgent，处理用户输入
-
-        注意：历史消息的压缩现在由 Graph 的 history_manager_node 处理
-
-        Args:
-            user_input: 用户输入
-            history: 历史消息列表（已压缩），格式: [{"role": "user/assistant", "content": "..."}]
-            context: RAG检索的上下文信息（可选）
-
-        Returns:
-            AI的回复
-        """
-        try:
-            # 构建输入消息（context通过消息前缀注入）
-            messages = self._build_messages(user_input, history, context)
-
-            # 执行 Agent（限制最大迭代轮数，防止死循环）
-            result = await self.agent_executor.ainvoke(
-                {"messages": messages},
-                config={"recursion_limit": self.agent_max_iterations}
-            )
-            response = result["messages"][-1].content
-
-            logger.info(f"ChatAgent处理成功，回复长度: {len(response)}")
-            return response
-
-        except Exception as e:
-            logger.error(f"ChatAgent执行失败: {e}")
-            raise
-
     async def stream_run(self, user_input: str, history: Optional[List[dict]] = None, context: Optional[str] = None) -> AsyncGenerator[dict, None]:
         """
         流式执行 ChatAgent，处理用户输入
@@ -142,24 +101,39 @@ class ChatAgent:
             结构化事件字典，包含 type 和相关数据：
             - {"type": "content", "content": "..."} - 文本内容
             - {"type": "thinking", "content": "..."} - 思考过程
-            - {"type": "tool_start", "tool": "...", "input": "..."} - 工具调用开始
-            - {"type": "tool_end", "tool": "...", "output": "..."} - 工具调用结束
+            - {"type": "event", "data": {"title": "...", "status": "START/END/ERROR", "message": "..."}} - 工具调用事件
         """
         try:
             # 构建输入消息（context通过消息前缀注入）
             messages = self._build_messages(user_input, history, context)
 
+            # 导入 Token 采集 Callback
+            from app.callbacks import usage_metadata_callback
+
             # 流式执行 Agent（限制最大迭代轮数，防止死循环）
             async for event in self.agent_executor.astream_events(
                 {"messages": messages},
                 version="v2",
-                config={"recursion_limit": self.agent_max_iterations}
+                config={
+                    "recursion_limit": self.agent_max_iterations,
+                    "callbacks": [usage_metadata_callback],
+                }
             ):
                 kind = event["event"]
 
                 if kind == "on_chat_model_stream":
-                    content = event["data"]["chunk"].content
-                    if content:
+                    chunk = event["data"]["chunk"]
+
+                    # 1. 提取 thinking 内容（qwen3 等思考模型的 reasoning_content）
+                    reasoning = None
+                    if hasattr(chunk, "additional_kwargs"):
+                        reasoning = chunk.additional_kwargs.get("reasoning_content")
+                    if reasoning:
+                        yield {"type": "thinking", "content": reasoning}
+
+                    # 2. 提取正常文本内容（跳过空内容和纯工具调用标签）
+                    content = chunk.content if hasattr(chunk, "content") else ""
+                    if content and content.strip() and not content.strip().startswith("<tool_call"):
                         yield {"type": "content", "content": content}
 
                 elif kind == "on_chat_model_start":
@@ -167,21 +141,56 @@ class ChatAgent:
                     yield {"type": "thinking", "content": "正在思考..."}
 
                 elif kind == "on_tool_start":
-                    # 工具调用开始
+                    # 工具调用开始 → 发送 START 事件
                     tool_name = event.get("name", "unknown")
-                    tool_input = event.get("data", {}).get("input", "")
-                    yield {"type": "tool_start", "tool": tool_name, "input": str(tool_input)}
+                    tool_input = ""
+                    try:
+                        tool_input = str(event.get("data", {}).get("input", ""))[:500]
+                    except Exception:
+                        pass
+                    display_name = format_tool_display_name(tool_name)
+                    yield {
+                        "type": "event",
+                        "data": {
+                            "title": f"执行工具: {display_name}",
+                            "status": "START",
+                            "message": f"正在调用工具 {display_name}..." + (f"\n输入: {tool_input}" if tool_input else ""),
+                            "tool_name": tool_name
+                        }
+                    }
 
                 elif kind == "on_tool_end":
-                    # 工具调用结束
+                    # 工具调用结束 → 发送 END 事件（携带返回内容）
                     tool_name = event.get("name", "unknown")
                     tool_output = ""
-                    if hasattr(event.get("data", {}).get("output"), "content"):
-                        tool_output = event["data"]["output"].content
-                    else:
-                        tool_output = str(event.get("data", {}).get("output", ""))
-                    yield {"type": "tool_end", "tool": tool_name, "output": tool_output}
+                    try:
+                        output = event.get("data", {}).get("output", "")
+                        if hasattr(output, "content"):
+                            tool_output = str(output.content)[:2000]
+                        else:
+                            tool_output = str(output)[:2000]
+                    except Exception:
+                        tool_output = "工具执行完成"
+                    display_name = format_tool_display_name(tool_name)
+                    yield {
+                        "type": "event",
+                        "data": {
+                            "title": f"执行工具: {display_name}",
+                            "status": "END",
+                            "message": tool_output,
+                            "tool_name": tool_name
+                        }
+                    }
 
         except Exception as e:
             logger.error(f"ChatAgent流式执行失败: {e}")
+            yield {
+                "type": "event",
+                "data": {
+                    "title": "执行出错",
+                    "status": "ERROR",
+                    "message": str(e)
+                }
+            }
             raise
+

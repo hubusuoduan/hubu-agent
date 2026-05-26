@@ -3,58 +3,26 @@
     <!-- 工具栏 -->
     <div class="chat-toolbar">
       <div class="toolbar-left">
-        <span class="page-title">{{ currentDialogName }}</span>
-      </div>
-      <div class="toolbar-right">
         <el-button
-          v-if="Object.keys(nodeTraces).length > 0"
-          size="default"
-          :type="showWorkflowPanel ? 'primary' : 'info'"
-          plain
-          @click="showWorkflowPanel = !showWorkflowPanel"
-        >
-          <el-icon><View /></el-icon>
-          {{ showWorkflowPanel ? '关闭追踪' : '工作流追踪' }}
-        </el-button>
-        <el-button
-          size="default"
-          type="primary"
-          plain
-          @click="startNewDialog"
-        >
-          <el-icon><Plus /></el-icon>
-          新对话
-        </el-button>
-        <el-button
-          size="default"
-          type="success"
-          plain
-          @click="showExportDialog = true"
+          circle
           :disabled="!dialogId"
+          @click="showExportDialog = true"
+          class="toolbar-icon-btn"
         >
           <el-icon><Download /></el-icon>
-          导出
         </el-button>
         <el-button
-          size="default"
-          type="danger"
-          plain
-          @click="clearChat"
-          :disabled="!dialogId"
-        >
-          <el-icon><Delete /></el-icon>
-          删除对话
-        </el-button>
-        <el-button
-          size="default"
-          type="info"
-          plain
+          circle
           @click="handleLogout"
+          class="toolbar-icon-btn"
         >
           <el-icon><SwitchButton /></el-icon>
-          退出
         </el-button>
       </div>
+      <div class="toolbar-center">
+        <span v-if="dialogId" class="dialog-title">{{ currentDialogName }}</span>
+      </div>
+      <div class="toolbar-right"></div>
     </div>
 
     <!-- 聊天消息区域 -->
@@ -66,7 +34,14 @@
           :msg="msg"
           :index="index"
           :expanded="!!thinkingExpanded[index]"
+          :is-delete-mode="isDeleteMode"
+          :is-selected="!!msg.id && selectedMessageIds.has(msg.id)"
+          :is-last-ai-message="isLastAiMessage(index)"
+          :has-prev-user-message="index > 0 && messages[index - 1].role === 'user'"
           @toggle-thinking="toggleThinking"
+          @toggle-select="toggleMessageSelection"
+          @regenerate="regenerateMessage"
+          @enter-delete-mode="enterDeleteMode"
         />
 
         <!-- 加载指示器 -->
@@ -83,11 +58,20 @@
       v-model:input-message="inputMessage"
       :sending="sending"
       :is-generating="isGenerating"
-      :uploaded-file="uploadedFile"
+      :uploaded-files="uploadedFiles"
+      :model-list="modelList"
+      :current-model-id="currentModelId"
+      :is-delete-mode="isDeleteMode"
+      :selected-count="selectedMessageIds.size"
       @send-message="sendMessage"
       @stop-generation="stopGeneration"
       @clear-file="clearFile"
+      @remove-file="removeFile"
       @file-change="handleFileChange"
+      @switch-model="handleSwitchModel"
+      @confirm-delete="confirmBatchDelete"
+      @cancel-delete="exitDeleteMode"
+      @select-all="toggleSelectAll"
     />
 
     <!-- 工作流可视化侧边栏（覆盖在右侧） -->
@@ -96,6 +80,7 @@
       :node-traces="nodeTraces"
       :total-duration-ms="workflowTotalMs"
       @close="showWorkflowPanel = false"
+      @open="showWorkflowPanel = true"
     />
 
     <!-- 导出对话框 -->
@@ -110,7 +95,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Delete, Loading, SwitchButton, Plus, View, Download } from '@element-plus/icons-vue'
+import { Delete, Loading, SwitchButton, Plus, Download } from '@element-plus/icons-vue'
 import ChatMessage from '../components/ChatMessage.vue'
 import ChatInput from '../components/ChatInput.vue'
 import WorkflowSidebar from '../components/WorkflowSidebar.vue'
@@ -132,11 +117,12 @@ const {
   dialogId,
   currentDialogName,
   messagesRef,
-  uploadedFile,
-  fileContent,
+  uploadedFiles,
   uploadingFile,
   isGenerating,
   thinkingExpanded,
+  isDeleteMode,
+  selectedMessageIds,
   showWorkflowPanel,
   nodeTraces,
   workflowTotalMs,
@@ -151,11 +137,29 @@ const {
   stopGeneration,
   handleFileChange,
   clearFile,
+  removeFile,
   handleLogout,
+  enterDeleteMode,
+  exitDeleteMode,
+  toggleMessageSelection,
+  toggleSelectAll,
+  confirmBatchDelete,
+  regenerateMessage,
+  modelList,
+  currentModelId,
+  loadModels,
+  handleSwitchModel,
 } = useChat()
 
 // 导出对话框
 const showExportDialog = ref(false)
+
+// 判断是否是最后一条AI消息（且已完成回复）
+function isLastAiMessage(index: number): boolean {
+  if (messages.value.length === 0) return false
+  const lastMsg = messages.value[messages.value.length - 1]
+  return lastMsg.role === 'ai' && lastMsg.content !== '' && index === messages.value.length - 1
+}
 
 // 监听路由参数变化，加载对话历史
 watch(
@@ -178,6 +182,7 @@ watch(
 
 onMounted(() => {
   scrollToBottom()
+  loadModels()
 })
 
 // 暴露方法给父组件（侧边栏对话列表切换用）
@@ -192,7 +197,7 @@ defineExpose({
 .chat-page {
   height: 100%;
   width: 100%;
-  background-color: #f0f2f5;
+  background-color: #f8f9fb;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -207,25 +212,59 @@ defineExpose({
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 14px 28px;
+  padding: 8px 20px;
   flex-shrink: 0;
 }
 
-.page-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1f2937;
-  max-width: 300px;
+.toolbar-left {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-icon-btn {
+  width: 32px !important;
+  height: 32px !important;
+  border: none !important;
+  background: transparent !important;
+  color: #64748b !important;
+  padding: 0 !important;
+}
+
+.toolbar-icon-btn:hover {
+  color: #34d399 !important;
+  background: rgba(52, 211, 153, 0.08) !important;
+}
+
+.toolbar-icon-btn:disabled {
+  color: #cbd5e1 !important;
+  background: transparent !important;
+}
+
+.toolbar-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.dialog-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #94a3b8;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 400px;
 }
 
 .toolbar-right {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* 消息区域 */
@@ -233,7 +272,7 @@ defineExpose({
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 28px 24px;
+  padding: 16px 24px;
 }
 
 .chat-messages::-webkit-scrollbar {

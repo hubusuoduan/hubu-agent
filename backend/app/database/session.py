@@ -22,6 +22,12 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
         await session.commit()
     except Exception as e:
+        # 区分HTTPException(如认证异常)和数据库异常
+        from fastapi import HTTPException
+        if isinstance(e, HTTPException):
+            # 认证/权限等HTTP异常，不需要回滚数据库，直接抛出
+            logger.warning(f'请求异常({e.status_code}): {e.detail}')
+            raise
         logger.error(f'数据库会话异常: {e}')
         await session.rollback()
         raise

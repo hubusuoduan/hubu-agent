@@ -1,6 +1,6 @@
 
 import request from './request'
-import { fetchWithTokenRefresh, getAccessToken } from './auth'
+import { fetchWithTokenRefresh, getValidAccessToken } from './auth'
 
 /** 导出格式 */
 export type ExportFormat = 'markdown'
@@ -22,7 +22,7 @@ export interface ExportDialogParams {
  * 使用 fetch 直接下载文件（因为 axios 不方便处理 blob 响应）
  */
 export const exportDialog = async (dialogId: string, params: ExportDialogParams): Promise<void> => {
-  const token = getAccessToken()
+  const token = await getValidAccessToken()
 
   const response = await fetchWithTokenRefresh('/api/v1/export/' + dialogId + '/export', {
     method: 'POST',

@@ -1,9 +1,9 @@
 """对话历史数据模型"""
 from sqlmodel import Field, SQLModel
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, DateTime, Text, JSON, text, String
+from sqlalchemy import Column, DateTime, Text, String
 
 from app.database.models.base import BaseModel
 
@@ -35,4 +35,5 @@ class HistoryTable(BaseModel, table=True):
         default=0,
         description="Token使用量"
     )
+
 

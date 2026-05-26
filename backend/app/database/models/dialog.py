@@ -44,4 +44,19 @@ class DialogTable(SQLModel, table=True):
         sa_column=Column(DateTime, nullable=False),
         description="更新时间"
     )
+    is_pinned: bool = Field(
+        default=False,
+        sa_column=Column(Integer, nullable=False, default=0),
+        description="是否置顶"
+    )
+    is_starred: bool = Field(
+        default=False,
+        sa_column=Column(Integer, nullable=False, default=0),
+        description="是否收藏"
+    )
+    pinned_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime, nullable=True),
+        description="置顶时间"
+    )
 

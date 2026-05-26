@@ -2,10 +2,12 @@
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlmodel.ext.asyncio.session import AsyncSession
+from loguru import logger
 
 from app.database.session import get_async_session
 from app.auth.auth_jwt import JWTAuth
 from app.auth.config import AuthConfig
+from app.auth.exceptions import InvalidTokenError
 from app.database.dao.user_dao import UserDAO
 from app.database.models.user import User
 
@@ -56,7 +58,16 @@ async def get_current_user(
         
     except HTTPException:
         raise
+    except InvalidTokenError as e:
+        # Token无效或过期，给出明确提示
+        logger.warning(f"Token验证失败: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail="Token已过期或无效，请重新登录",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
     except Exception as e:
+        logger.error(f"认证异常: {e}")
         raise HTTPException(status_code=401, detail=f"认证失败: {str(e)}")
 
 

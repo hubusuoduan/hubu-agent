@@ -1,20 +1,10 @@
 import request from './request'
-import { fetchWithTokenRefresh, getAccessToken } from './auth'
+import { fetchWithTokenRefresh, getValidAccessToken } from './auth'
 
 export interface ChatMessage {
   message: string
   dialog_id?: string  // 对话ID，为空则自动创建新对话
   file_content?: string  // 文件解析后的内容
-}
-
-export interface ChatResponse {
-  response: string
-  dialog_id: string
-}
-
-// 发送聊天消息
-export const sendMessage = (data: ChatMessage) => {
-  return request.post<ChatResponse>('/chat/message', data)
 }
 
 // 用于取消流式请求的控制器
@@ -23,11 +13,22 @@ let abortController: AbortController | null = null
 // 发送流式聊天消息
 // 思考过程事件类型
 export interface ThinkingEvent {
-  type: 'thinking' | 'tool_start' | 'tool_end'
+  type: 'thinking'
   content?: string
-  tool?: string
-  input?: string
-  output?: string
+}
+
+// 工具调用事件数据
+export interface ToolCallEventData {
+  title: string
+  status: 'START' | 'END' | 'ERROR'
+  message: string
+  tool_name?: string
+}
+
+// 工具调用事件
+export interface ToolCallEvent {
+  type: 'event'
+  data: ToolCallEventData
 }
 
 // 节点追踪事件类型
@@ -50,13 +51,15 @@ export const sendStreamMessage = async (
   onComplete: (dialogId?: string) => void,
   onError: (error: Error) => void,
   onEvent?: (event: ThinkingEvent) => void,
-  onNodeEvent?: (event: NodeEvent) => void
+  onNodeEvent?: (event: NodeEvent) => void,
+  onToolEvent?: (event: ToolCallEvent) => void,
+  onDialogInit?: (dialogId: string) => void
 ) => {
   try {
     // 创建新的 AbortController
     abortController = new AbortController()
 
-    const token = getAccessToken()
+    const token = await getValidAccessToken()
 
     const response = await fetchWithTokenRefresh('/api/v1/chat/stream-message', {
       method: 'POST',
@@ -106,17 +109,25 @@ export const sendStreamMessage = async (
 
           try {
             const parsed = JSON.parse(data)
-            // 结构化事件格式：{ type: "content"|"thinking"|"tool_start"|"tool_end", ... }
+            // 结构化事件格式：{ type: "content"|"thinking"|"event"|"node_*", ... }
             if (parsed.type) {
+              if (parsed.type === 'dialog_init' && parsed.dialog_id) {
+                // 尽早通知 dialog_id，让停止生成时能保存截断消息
+                if (onDialogInit) onDialogInit(parsed.dialog_id)
+              }
               if (parsed.type === 'content' && parsed.content) {
                 onChunk(parsed.content)
               }
+              // 工具调用事件通过 onToolEvent 回调传递
+              else if (parsed.type === 'event' && onToolEvent) {
+                onToolEvent(parsed)
+              }
               // 节点追踪事件通过 onNodeEvent 回调传递
-              if (['node_start', 'node_end', 'node_error', 'workflow_done'].includes(parsed.type) && onNodeEvent) {
+              else if (['node_start', 'node_end', 'node_error', 'workflow_done'].includes(parsed.type) && onNodeEvent) {
                 onNodeEvent(parsed)
               }
               // 思考过程事件通过 onEvent 回调传递
-              else if (parsed.type !== 'content' && parsed.type !== 'node_start' && parsed.type !== 'node_end' && parsed.type !== 'node_error' && parsed.type !== 'workflow_done' && onEvent) {
+              else if (parsed.type === 'thinking' && onEvent) {
                 onEvent(parsed)
               }
             } else if (parsed.content) {
@@ -140,6 +151,7 @@ export const sendStreamMessage = async (
     // 如果是用户主动取消,不报错
     if ((error as Error).name === 'AbortError') {
       console.log('流式请求已取消')
+      onError(error as Error)
       return
     }
     onError(error as Error)
@@ -161,7 +173,7 @@ export const uploadFile = async (file: File) => {
   const formData = new FormData()
   formData.append('file', file)
 
-  const token = getAccessToken()
+  const token = await getValidAccessToken()
 
   const response = await fetchWithTokenRefresh('/api/v1/chat/upload-file', {
     method: 'POST',
@@ -186,6 +198,9 @@ export interface DialogInfo {
   name: string
   create_time: string | null
   update_time: string | null
+  is_pinned: boolean
+  is_starred: boolean
+  pinned_at: string | null
 }
 
 // 创建新对话
@@ -216,4 +231,43 @@ export const getDialogDetail = (dialogId: string) => {
 // 获取对话历史
 export const getDialogHistory = (dialogId: string, limit: number = 50) => {
   return request.get(`/dialog/${dialogId}/history`, { params: { limit } })
+}
+
+// 保存截断的AI消息
+export const saveTruncatedMessage = (dialogId: string, content: string) => {
+  return request.post('/chat/save-truncated', { dialog_id: dialogId, content })
+}
+
+// 批量删除对话消息
+export const batchDeleteMessages = (dialogId: string, messageIds: string[]) => {
+  return request.delete<{ dialog_id: string; deleted_count: number }>(`/dialog/${dialogId}/messages`, {
+    params: { message_ids: messageIds },
+    paramsSerializer: {
+      serialize: (params: Record<string, any>) => {
+        // 将 message_ids 数组序列化为多个同名参数: message_ids=a&message_ids=b
+        const parts: string[] = []
+        for (const key in params) {
+          const value = params[key]
+          if (Array.isArray(value)) {
+            for (const v of value) {
+              parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(v)}`)
+            }
+          } else {
+            parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+          }
+        }
+        return parts.join('&')
+      }
+    }
+  })
+}
+
+// 置顶/取消置顶对话
+export const pinDialog = (dialogId: string, isPinned: boolean) => {
+  return request.put(`/dialog/${dialogId}/pin`, { is_pinned: isPinned })
+}
+
+// 收藏/取消收藏对话
+export const starDialog = (dialogId: string, isStarred: boolean) => {
+  return request.put(`/dialog/${dialogId}/star`, { is_starred: isStarred })
 }

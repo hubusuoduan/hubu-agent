@@ -1,7 +1,11 @@
 <template>
   <div class="login-page">
     <div class="login-container">
-      <h2>用户登录</h2>
+      <div class="login-brand">
+        <div class="brand-icon">H</div>
+        <h2>Hubu Agent</h2>
+        <p>登录你的账户</p>
+      </div>
       <el-form :model="loginForm" @submit.prevent="handleLogin">
         <el-form-item>
           <el-input
@@ -118,12 +122,37 @@ async function handleLogin() {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.login-container h2 {
+.login-brand {
   text-align: center;
-  margin-bottom: 36px;
-  color: #1f2937;
+  margin-bottom: 32px;
+}
+
+.brand-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #09b572, #059669);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
   font-size: 24px;
+  font-weight: 800;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 12px rgba(9, 181, 114, 0.3);
+}
+
+.login-brand h2 {
+  margin: 0 0 4px 0;
+  color: #1f2937;
+  font-size: 22px;
   font-weight: 700;
+}
+
+.login-brand p {
+  margin: 0;
+  color: #9ca3af;
+  font-size: 14px;
 }
 
 .register-link {

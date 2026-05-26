@@ -149,16 +149,14 @@ async def upload_file_to_knowledge(
         tmp_path = tmp.name
     
     try:
-        # 创建文件记录
+        # 创建文件记录（先不commit，索引成功后再提交，避免索引失败产生脏数据）
         file_record = KnowledgeFileTable(
             file_name=file.filename,
             knowledge_id=knowledge_id,
             file_size=len(content),
             user_id="default_user"
         )
-        session.add(file_record)
-        await session.commit()
-        await session.refresh(file_record)
+        # ID由uuid4自动生成，不需要commit就能获取
         
         # 索引文档
         chunk_ids = await RagHandler.index_documents(
@@ -169,8 +167,18 @@ async def upload_file_to_knowledge(
         )
         
         if not chunk_ids:
+            # 索引失败，清理已写入向量存储的数据
+            try:
+                await RagHandler.delete_documents(file_record.id, knowledge_id)
+            except Exception:
+                pass
             raise HTTPException(status_code=500, detail="文档索引失败")
         
+        # 索引成功，提交文件记录到数据库
+        session.add(file_record)
+        await session.commit()
+        await session.refresh(file_record)
+
         return KnowledgeFileResponse(
             id=file_record.id,
             file_name=file_record.file_name,
@@ -182,6 +190,92 @@ async def upload_file_to_knowledge(
         # 清理临时文件
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+
+@router.get("/{knowledge_id}/files", summary="获取知识库文件列表")
+async def list_knowledge_files(
+    knowledge_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """获取知识库下的所有文件列表"""
+    knowledge = await session.get(KnowledgeTable, knowledge_id)
+    if not knowledge:
+        raise HTTPException(status_code=404, detail="知识库不存在")
+
+    statement = select(KnowledgeFileTable).where(KnowledgeFileTable.knowledge_id == knowledge_id)
+    result = await session.execute(statement)
+    files = result.scalars().all()
+
+    return {
+        "total": len(files),
+        "items": [KnowledgeFileResponse(
+            id=f.id,
+            file_name=f.file_name,
+            knowledge_id=f.knowledge_id,
+            status=f.status,
+            file_size=f.file_size
+        ) for f in files]
+    }
+
+
+@router.delete("/{knowledge_id}/files/{file_id}", summary="删除知识库文件")
+async def delete_knowledge_file(
+    knowledge_id: str,
+    file_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """删除知识库中的文件及其关联的向量数据"""
+    knowledge = await session.get(KnowledgeTable, knowledge_id)
+    if not knowledge:
+        raise HTTPException(status_code=404, detail="知识库不存在")
+
+    file_record = await session.get(KnowledgeFileTable, file_id)
+    if not file_record or file_record.knowledge_id != knowledge_id:
+        raise HTTPException(status_code=404, detail="文件不存在")
+
+    # 删除向量存储中的文档
+    await RagHandler.delete_documents(file_id, knowledge_id)
+    # 删除数据库记录
+    await session.delete(file_record)
+    await session.commit()
+
+    return {"message": "文件删除成功"}
+
+
+@router.put("/{knowledge_id}", summary="更新知识库信息")
+async def update_knowledge(
+    knowledge_id: str,
+    data: KnowledgeCreate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """更新知识库名称和描述"""
+    knowledge = await session.get(KnowledgeTable, knowledge_id)
+    if not knowledge:
+        raise HTTPException(status_code=404, detail="知识库不存在")
+
+    # 检查名称是否与其他知识库冲突
+    if data.name != knowledge.name:
+        statement = select(KnowledgeTable).where(KnowledgeTable.name == data.name)
+        result = await session.execute(statement)
+        existing = result.scalars().first()
+        if existing:
+            raise HTTPException(status_code=400, detail="知识库名称已存在")
+
+    knowledge.name = data.name
+    knowledge.description = data.description
+    session.add(knowledge)
+    await session.commit()
+    await session.refresh(knowledge)
+
+    return KnowledgeResponse(
+        id=knowledge.id,
+        name=knowledge.name,
+        description=knowledge.description,
+        user_id=knowledge.user_id
+    )
 
 
 @router.post("/query", response_model=RAGQueryResponse, summary="RAG查询")

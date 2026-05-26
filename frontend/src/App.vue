@@ -7,41 +7,152 @@
           <el-icon><ChatDotRound /></el-icon>
           <span>新对话</span>
         </router-link>
-        <router-link to="/knowledge" class="nav-item" active-class="active">
+        <router-link to="/knowledge" class="nav-item" :class="{ active: route.path.startsWith('/knowledge') }">
           <el-icon><FolderOpened /></el-icon>
           <span>知识库</span>
         </router-link>
-        <router-link to="/memory" class="nav-item" active-class="active">
+        <router-link to="/memory" class="nav-item" :class="{ active: route.path === '/memory' }">
           <el-icon><Collection /></el-icon>
           <span>记忆管理</span>
+        </router-link>
+        <router-link to="/skills" class="nav-item" :class="{ active: route.path === '/skills' }">
+          <el-icon><SetUp /></el-icon>
+          <span>技能管理</span>
+        </router-link>
+        <router-link to="/workspace" class="nav-item" :class="{ active: route.path === '/workspace' }">
+          <el-icon><Folder /></el-icon>
+          <span>工作区文件</span>
+        </router-link>
+        <router-link to="/logs" class="nav-item" :class="{ active: route.path === '/logs' }">
+          <el-icon><Notebook /></el-icon>
+          <span>日志查看</span>
+        </router-link>
+        <router-link to="/dashboard" class="nav-item" :class="{ active: route.path === '/dashboard' }">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>Token 统计</span>
+        </router-link>
+        <router-link to="/settings" class="nav-item" :class="{ active: route.path === '/settings' }">
+          <el-icon><Setting /></el-icon>
+          <span>系统设置</span>
         </router-link>
       </div>
       <!-- 对话历史列表 -->
       <div class="sidebar-history">
         <div class="history-header">
           <span>历史对话</span>
-          <el-button size="small" text @click="refreshDialogs" :loading="loadingDialogs">
-            <el-icon><Refresh /></el-icon>
-          </el-button>
         </div>
         <div class="history-list">
-          <div
-            v-for="dialog in dialogList"
-            :key="dialog.dialog_id"
-            :class="['history-item', { active: currentDialogId === dialog.dialog_id }]"
-            @click="switchDialog(dialog)"
-          >
-            <el-icon class="history-item-icon"><ChatDotRound /></el-icon>
-            <span class="history-item-name">{{ dialog.name }}</span>
-            <el-button
-              class="history-item-delete"
-              size="small"
-              text
-              @click.stop="handleDeleteDialog(dialog.dialog_id)"
+          <!-- 置顶对话 -->
+          <template v-if="pinnedDialogs.length > 0">
+            <div class="history-group-title">📌 置顶</div>
+            <div
+              v-for="dialog in pinnedDialogs"
+              :key="dialog.dialog_id"
+              :class="['history-item', { active: currentDialogId === dialog.dialog_id }]"
+              @click="switchDialog(dialog)"
             >
-              <el-icon><Delete /></el-icon>
-            </el-button>
-          </div>
+              <el-icon class="history-item-icon icon-pinned"><Top /></el-icon>
+              <span class="history-item-name">{{ dialog.name }}</span>
+              <el-dropdown trigger="click" @command="(cmd: string) => handleDialogCommand(cmd, dialog.dialog_id)" @click.stop>
+                <el-button class="history-item-more" size="small" text @click.stop>
+                  <el-icon class="more-icon-rotated"><MoreFilled /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="unpin" v-if="dialog.is_pinned">
+                      <el-icon><Top /></el-icon> 取消置顶
+                    </el-dropdown-item>
+                    <el-dropdown-item command="pin" v-else>
+                      <el-icon><Top /></el-icon> 置顶
+                    </el-dropdown-item>
+                    <el-dropdown-item command="unstar" v-if="dialog.is_starred">
+                      <el-icon><Star /></el-icon> 取消收藏
+                    </el-dropdown-item>
+                    <el-dropdown-item command="star" v-else>
+                      <el-icon><Star /></el-icon> 收藏
+                    </el-dropdown-item>
+                    <el-dropdown-item command="rename">
+                      <el-icon><Edit /></el-icon> 重命名
+                    </el-dropdown-item>
+                    <el-dropdown-item command="delete" divided class="dropdown-delete-item">
+                      <el-icon><Delete /></el-icon> 删除
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+          </template>
+
+          <!-- 收藏对话 -->
+          <template v-if="starredDialogs.length > 0">
+            <div class="history-group-title">⭐ 收藏</div>
+            <div
+              v-for="dialog in starredDialogs"
+              :key="dialog.dialog_id"
+              :class="['history-item', { active: currentDialogId === dialog.dialog_id }]"
+              @click="switchDialog(dialog)"
+            >
+              <el-icon class="history-item-icon icon-starred"><Star /></el-icon>
+              <span class="history-item-name">{{ dialog.name }}</span>
+              <el-dropdown trigger="click" @command="(cmd: string) => handleDialogCommand(cmd, dialog.dialog_id)" @click.stop>
+                <el-button class="history-item-more" size="small" text @click.stop>
+                  <el-icon class="more-icon-rotated"><MoreFilled /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="pin">
+                      <el-icon><Top /></el-icon> 置顶
+                    </el-dropdown-item>
+                    <el-dropdown-item command="unstar">
+                      <el-icon><Star /></el-icon> 取消收藏
+                    </el-dropdown-item>
+                    <el-dropdown-item command="rename">
+                      <el-icon><Edit /></el-icon> 重命名
+                    </el-dropdown-item>
+                    <el-dropdown-item command="delete" divided class="dropdown-delete-item">
+                      <el-icon><Delete /></el-icon> 删除
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+          </template>
+
+          <!-- 最近对话 -->
+          <template v-if="recentDialogs.length > 0">
+            <div class="history-group-title" v-if="pinnedDialogs.length > 0 || starredDialogs.length > 0">💬 最近</div>
+            <div
+              v-for="dialog in recentDialogs"
+              :key="dialog.dialog_id"
+              :class="['history-item', { active: currentDialogId === dialog.dialog_id }]"
+              @click="switchDialog(dialog)"
+            >
+              <el-icon class="history-item-icon"><ChatDotRound /></el-icon>
+              <span class="history-item-name">{{ dialog.name }}</span>
+              <el-dropdown trigger="click" @command="(cmd: string) => handleDialogCommand(cmd, dialog.dialog_id)" @click.stop>
+                <el-button class="history-item-more" size="small" text @click.stop>
+                  <el-icon class="more-icon-rotated"><MoreFilled /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="pin">
+                      <el-icon><Top /></el-icon> 置顶
+                    </el-dropdown-item>
+                    <el-dropdown-item command="star">
+                      <el-icon><Star /></el-icon> 收藏
+                    </el-dropdown-item>
+                    <el-dropdown-item command="rename">
+                      <el-icon><Edit /></el-icon> 重命名
+                    </el-dropdown-item>
+                    <el-dropdown-item command="delete" divided class="dropdown-delete-item">
+                      <el-icon><Delete /></el-icon> 删除
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+          </template>
+
           <div v-if="dialogList.length === 0" class="history-empty">
             暂无历史对话
           </div>
@@ -57,9 +168,9 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ChatDotRound, FolderOpened, Collection, Refresh, Delete } from '@element-plus/icons-vue'
+import { ChatDotRound, FolderOpened, Collection, SetUp, Setting, Refresh, Delete, DataAnalysis, Folder, Notebook, Top, Star, MoreFilled, Edit } from '@element-plus/icons-vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { getDialogList, deleteDialog } from './apis/chat'
+import { getDialogList, deleteDialog, pinDialog, starDialog, updateDialogName } from './apis/chat'
 import type { DialogInfo } from './apis/chat'
 
 const route = useRoute()
@@ -92,9 +203,94 @@ const refreshDialogs = async () => {
   }
 }
 
+// 分组对话列表
+const pinnedDialogs = computed(() => dialogList.value.filter(d => d.is_pinned))
+const starredDialogs = computed(() => dialogList.value.filter(d => d.is_starred && !d.is_pinned))
+const recentDialogs = computed(() => dialogList.value.filter(d => !d.is_pinned && !d.is_starred))
+
 // 切换对话 - 通过路由跳转
 const switchDialog = (dialog: DialogInfo) => {
   router.push(`/chat/${dialog.dialog_id}`)
+}
+
+// 下拉菜单命令分发
+function handleDialogCommand(command: string, dialogId: string) {
+  switch (command) {
+    case 'pin': handlePinDialog(dialogId); break
+    case 'unpin': handleUnpinDialog(dialogId); break
+    case 'star': handleStarDialog(dialogId); break
+    case 'unstar': handleUnstarDialog(dialogId); break
+    case 'rename': handleRenameDialog(dialogId); break
+    case 'delete': handleDeleteDialog(dialogId); break
+  }
+}
+
+// 重命名对话
+async function handleRenameDialog(dialogId: string) {
+  const dialog = dialogList.value.find(d => d.dialog_id === dialogId)
+  const oldName = dialog?.name || ''
+  try {
+    const { value } = await ElMessageBox.prompt('请输入新名称', '重命名对话', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      inputValue: oldName,
+      inputPattern: /^.{1,100}$/,
+      inputErrorMessage: '名称长度为1-100个字符'
+    })
+    await updateDialogName(dialogId, value)
+    ElMessage.success('重命名成功')
+    refreshDialogs()
+  } catch {
+    // 用户取消
+  }
+}
+
+// 置顶对话
+async function handlePinDialog(dialogId: string) {
+  try {
+    await pinDialog(dialogId, true)
+    ElMessage.success('已置顶')
+    refreshDialogs()
+  } catch (error) {
+    ElMessage.error('置顶失败')
+    console.error(error)
+  }
+}
+
+// 取消置顶
+async function handleUnpinDialog(dialogId: string) {
+  try {
+    await pinDialog(dialogId, false)
+    ElMessage.success('已取消置顶')
+    refreshDialogs()
+  } catch (error) {
+    ElMessage.error('取消置顶失败')
+    console.error(error)
+  }
+}
+
+// 收藏对话
+async function handleStarDialog(dialogId: string) {
+  try {
+    await starDialog(dialogId, true)
+    ElMessage.success('已收藏')
+    refreshDialogs()
+  } catch (error) {
+    ElMessage.error('收藏失败')
+    console.error(error)
+  }
+}
+
+// 取消收藏
+async function handleUnstarDialog(dialogId: string) {
+  try {
+    await starDialog(dialogId, false)
+    ElMessage.success('已取消收藏')
+    refreshDialogs()
+  } catch (error) {
+    ElMessage.error('取消收藏失败')
+    console.error(error)
+  }
 }
 
 // 删除对话
@@ -127,198 +323,6 @@ onMounted(() => {
 </script>
 
 <style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-#app {
-  font-family: 'Microsoft YaHei', Arial, sans-serif;
-  height: 100vh;
-  width: 100vw;
-  display: flex;
-}
-
-/* 全局覆盖 Element Plus 主色为绿色 */
-:root {
-  --el-color-primary: #09b572;
-  --el-color-primary-light-3: #3cc88f;
-  --el-color-primary-light-5: #6ddaaa;
-  --el-color-primary-light-7: #9eedc5;
-  --el-color-primary-light-8: #b5f2d4;
-  --el-color-primary-light-9: #ccf7e3;
-  --el-color-primary-dark-2: #07925b;
-}
-
-.el-button--primary {
-  --el-button-bg-color: #09b572;
-  --el-button-border-color: #09b572;
-  --el-button-hover-bg-color: #07a065;
-  --el-button-hover-border-color: #07a065;
-  --el-button-active-bg-color: #07925b;
-  --el-button-active-border-color: #07925b;
-}
-
-.el-button--primary.is-plain {
-  --el-button-bg-color: #ecfaf3;
-  --el-button-border-color: #3cc88f;
-  --el-button-hover-bg-color: #09b572;
-  --el-button-hover-border-color: #09b572;
-  --el-button-hover-text-color: #ffffff;
-}
-
-.el-button--primary.is-text {
-  --el-button-hover-bg-color: rgba(9, 181, 114, 0.1);
-  --el-button-hover-text-color: #09b572;
-}
-
-.app-sidebar {
-  width: 240px;
-  background: #2c2c2c;
-  color: white;
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
-}
-
-.sidebar-logo {
-  padding: 28px 20px;
-  font-size: 18px;
-  font-weight: 700;
-  text-align: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  margin-bottom: 8px;
-  letter-spacing: 1px;
-  color: #09b572;
-}
-
-.sidebar-nav {
-  flex-shrink: 0;
-  padding: 4px 8px;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-radius: 10px;
-  text-decoration: none;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.2s;
-  margin-bottom: 2px;
-}
-
-.nav-item:hover {
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.nav-item.active {
-  color: white;
-  background: rgba(9, 181, 114, 0.15);
-  border-left: none;
-  box-shadow: inset 0 0 0 1px rgba(9, 181, 114, 0.25);
-}
-
-.nav-item.active .el-icon {
-  color: #09b572;
-}
-
-/* 对话历史列表样式 */
-.sidebar-history {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  margin-top: 8px;
-}
-
-.history-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.35);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.history-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 8px 12px;
-}
-
-.history-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.history-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-}
-
-.history-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 13px;
-}
-
-.history-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.history-item.active {
-  background: rgba(9, 181, 114, 0.12);
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.history-item-icon {
-  flex-shrink: 0;
-  font-size: 14px;
-}
-
-.history-item-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-item-delete {
-  opacity: 0;
-  transition: opacity 0.2s;
-  color: rgba(255, 255, 255, 0.35) !important;
-}
-
-.history-item:hover .history-item-delete {
-  opacity: 1;
-}
-
-.history-empty {
-  text-align: center;
-  padding: 24px;
-  color: rgba(255, 255, 255, 0.25);
-  font-size: 13px;
-}
-
-.app-content {
-  flex: 1;
-  overflow: hidden;
-  background-color: #f5f5f5;
-}
+@import './styles/global.css';
+@import './styles/sidebar.css';
 </style>

@@ -36,7 +36,7 @@ async def rag_node(state: ChatState) -> dict:
                 
                 if not knowledge_ids:
                     logger.info("没有可用的知识库，跳过 RAG 检索")
-                    return {"context": None}
+                    return {"rag_context": None}
                 
                 logger.info(f"找到 {len(knowledge_ids)} 个知识库: {knowledge_ids}")
                 
@@ -48,11 +48,11 @@ async def rag_node(state: ChatState) -> dict:
                 
                 # 3. 处理检索结果
                 if context and context != "未找到相关文档。":
-                    logger.info(f"RAG 节点检索成功，context 长度: {len(context)}")
-                    return {"context": context}
+                    logger.info(f"RAG 节点检索成功，rag_context 长度: {len(context)}")
+                    return {"rag_context": context}
                 else:
                     logger.warning("RAG 节点未检索到相关文档，将使用纯对话模式")
-                    return {"context": None}
+                    return {"rag_context": None}
                     
             finally:
                 await session.close()
@@ -60,5 +60,5 @@ async def rag_node(state: ChatState) -> dict:
         
     except Exception as e:
         logger.error(f"RAG 节点执行失败: {e}")
-        # 即使失败也返回空 context，避免中断整个流程
-        return {"context": None}
+        # 即使失败也返回空 rag_context，避免中断整个流程
+        return {"rag_context": None}

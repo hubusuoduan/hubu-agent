@@ -1,49 +1,121 @@
 <template>
   <div class="knowledge-page">
-    <div class="page-header">
-      <h2>知识库管理</h2>
-      <el-button type="primary" @click="showCreateDialog = true">
-        <el-icon><Plus /></el-icon>
-        创建知识库
-      </el-button>
+    <div class="knowledge-page-inner">
+    <!-- 顶部 Banner -->
+    <div class="knowledge-banner">
+      <div class="banner-content">
+        <div class="banner-info">
+          <div class="banner-icon">
+            <el-icon :size="28" color="#fff"><FolderOpened /></el-icon>
+          </div>
+          <div class="banner-text">
+            <h2>知识库管理</h2>
+            <p>创建和管理知识库，为 AI 对话提供专业知识支撑</p>
+          </div>
+        </div>
+        <el-button type="primary" size="large" round @click="showCreateDialog = true">
+          <el-icon><Plus /></el-icon>
+          创建知识库
+        </el-button>
+      </div>
+      <!-- 统计信息 -->
+      <div class="banner-stats">
+        <div class="stat-item">
+          <span class="stat-value">{{ knowledgeList.length }}</span>
+          <span class="stat-label">知识库总数</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 搜索与操作栏 -->
+    <div class="knowledge-toolbar">
+      <div class="toolbar-left">
+        <el-input
+          v-model="searchKeyword"
+          placeholder="搜索知识库名称或描述..."
+          clearable
+          :prefix-icon="Search"
+          class="search-input"
+        />
+        <el-button
+          v-if="!batchMode"
+          type="default"
+          @click="enterBatchMode"
+        >
+          <el-icon><Select /></el-icon>
+          批量管理
+        </el-button>
+        <template v-else>
+          <el-button type="default" @click="toggleSelectAll">
+            {{ isAllSelected ? '取消全选' : '全选' }}
+          </el-button>
+          <el-button
+            type="danger"
+            :disabled="selectedIds.length === 0"
+            @click="handleBatchDelete"
+          >
+            <el-icon><Delete /></el-icon>
+            删除选中 ({{ selectedIds.length }})
+          </el-button>
+          <el-button type="default" @click="exitBatchMode">退出批量</el-button>
+        </template>
+      </div>
     </div>
 
     <!-- 知识库列表 -->
     <div class="knowledge-list">
-      <el-card v-for="kb in knowledgeList" :key="kb.id" class="knowledge-card">
-        <div class="card-header">
-          <div class="card-title">
-            <el-icon :size="24" color="#09b572"><FolderOpened /></el-icon>
-            <h3>{{ kb.name }}</h3>
+      <div
+        v-for="kb in filteredList"
+        :key="kb.id"
+        class="knowledge-card"
+        :class="{ 'card-selected': selectedIds.includes(kb.id), 'card-selectable': batchMode }"
+        @click="handleCardClick(kb)"
+      >
+        <div class="card-color-bar"></div>
+        <div class="card-body">
+          <div class="card-header">
+            <div v-if="batchMode" class="card-checkbox" @click.stop="toggleSelect(kb.id)">
+              <el-checkbox :model-value="selectedIds.includes(kb.id)" />
+            </div>
+            <div class="card-icon">
+              <el-icon :size="20" color="#e28407"><FolderOpened /></el-icon>
+            </div>
+            <div class="card-title-area">
+              <h3>{{ kb.name }}</h3>
+              <p class="card-description">{{ kb.description || '暂无描述' }}</p>
+            </div>
           </div>
-          <el-button type="danger" size="small" @click="handleDelete(kb.id)">
-            <el-icon><Delete /></el-icon>
-            删除
-          </el-button>
+          <div class="card-footer">
+            <div class="card-meta">
+              <span class="meta-item">
+                <el-icon :size="12"><Document /></el-icon>
+                知识库
+              </span>
+            </div>
+            <div class="card-actions" v-if="!batchMode">
+              <div class="action-icon-btn danger" @click.stop="handleDelete(kb.id)">
+                <el-icon :size="14"><Delete /></el-icon>
+              </div>
+              <div class="enter-link">
+                <span>查看详情</span>
+                <el-icon :size="12"><ArrowRight /></el-icon>
+              </div>
+            </div>
+          </div>
         </div>
-        
-        <p class="card-description">{{ kb.description || '暂无描述' }}</p>
-        
-        <!-- 上传文件区域 -->
-        <div class="upload-area">
-          <el-upload
-            :action="`/api/v1/knowledge/upload?knowledge_id=${kb.id}`"
-            :headers="uploadHeaders"
-            :on-success="(res) => handleUploadSuccess(res, kb.id)"
-            :on-error="handleUploadError"
-            :before-upload="beforeUpload"
-            :show-file-list="false"
-          >
-            <el-button size="small" type="success">
-              <el-icon><Upload /></el-icon>
-              上传文件
-            </el-button>
-          </el-upload>
-          <span class="upload-tip">支持 .txt, .pdf, .docx, .md 等格式</span>
-        </div>
-      </el-card>
+      </div>
 
-      <el-empty v-if="knowledgeList.length === 0" description="暂无知识库，请先创建" />
+      <div v-if="filteredList.length === 0 && knowledgeList.length > 0" class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <p class="empty-title">未找到匹配的知识库</p>
+        <p class="empty-desc">尝试使用其他关键词搜索</p>
+      </div>
+
+      <div v-if="knowledgeList.length === 0" class="empty-state">
+        <div class="empty-icon">📚</div>
+        <p class="empty-title">暂无知识库</p>
+        <p class="empty-desc">点击上方按钮创建你的第一个知识库</p>
+      </div>
     </div>
 
     <!-- 创建知识库对话框 -->
@@ -73,13 +145,15 @@
         </el-button>
       </template>
     </el-dialog>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, Upload, FolderOpened } from '@element-plus/icons-vue'
+import { Plus, Delete, FolderOpened, ArrowRight, Document, Search, Select } from '@element-plus/icons-vue'
 import {
   createKnowledge,
   getKnowledgeList,
@@ -87,19 +161,78 @@ import {
   type Knowledge
 } from '../apis/knowledge'
 
+const router = useRouter()
 const knowledgeList = ref<Knowledge[]>([])
 const showCreateDialog = ref(false)
 const creating = ref(false)
+const searchKeyword = ref('')
+const batchMode = ref(false)
+const selectedIds = ref<string[]>([])
 
 const createForm = ref({
   name: '',
   description: ''
 })
 
-// 上传请求头（动态获取token，避免token刷新后仍使用旧token）
-const uploadHeaders = computed(() => ({
-  Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`
-}))
+// 模糊搜索过滤
+const filteredList = computed(() => {
+  const keyword = searchKeyword.value.trim().toLowerCase()
+  if (!keyword) return knowledgeList.value
+  return knowledgeList.value.filter(kb =>
+    kb.name.toLowerCase().includes(keyword) ||
+    (kb.description && kb.description.toLowerCase().includes(keyword))
+  )
+})
+
+// 是否全选
+const isAllSelected = computed(() => {
+  return filteredList.value.length > 0 && filteredList.value.every(kb => selectedIds.value.includes(kb.id))
+})
+
+// 进入批量模式
+function enterBatchMode() {
+  batchMode.value = true
+  selectedIds.value = []
+}
+
+// 退出批量模式
+function exitBatchMode() {
+  batchMode.value = false
+  selectedIds.value = []
+}
+
+// 切换选中
+function toggleSelect(id: string) {
+  const idx = selectedIds.value.indexOf(id)
+  if (idx >= 0) {
+    selectedIds.value.splice(idx, 1)
+  } else {
+    selectedIds.value.push(id)
+  }
+}
+
+// 全选/取消全选
+function toggleSelectAll() {
+  if (isAllSelected.value) {
+    selectedIds.value = []
+  } else {
+    selectedIds.value = filteredList.value.map(kb => kb.id)
+  }
+}
+
+// 卡片点击：批量模式下切换选中，否则进入详情
+function handleCardClick(kb: Knowledge) {
+  if (batchMode.value) {
+    toggleSelect(kb.id)
+  } else {
+    goToDetail(kb.id)
+  }
+}
+
+// 进入知识库详情
+function goToDetail(id: string) {
+  router.push(`/knowledge/${id}`)
+}
 
 // 加载知识库列表
 async function loadKnowledgeList() {
@@ -152,34 +285,38 @@ async function handleDelete(knowledgeId: string) {
   }
 }
 
-// 上传前检查
-function beforeUpload(file: File) {
-  const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase()
-  const isValidType = ['.txt', '.pdf', '.docx', '.md', '.json', '.csv'].includes(ext)
+// 批量删除
+async function handleBatchDelete() {
+  if (selectedIds.value.length === 0) return
 
-  if (!isValidType) {
-    ElMessage.error('只支持 .txt, .pdf, .docx, .md, .json, .csv 格式的文件')
-    return false
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除选中的 ${selectedIds.value.length} 个知识库吗？此操作不可恢复。`,
+      '批量删除确认',
+      {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    const promises = selectedIds.value.map(id => deleteKnowledge(id))
+    const results = await Promise.allSettled(promises)
+
+    const failedCount = results.filter(r => r.status === 'rejected').length
+    if (failedCount > 0) {
+      ElMessage.warning(`已删除 ${selectedIds.value.length - failedCount} 个，${failedCount} 个删除失败`)
+    } else {
+      ElMessage.success(`成功删除 ${selectedIds.value.length} 个知识库`)
+    }
+
+    exitBatchMode()
+    await loadKnowledgeList()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error('批量删除失败')
+    }
   }
-
-  const isLt50M = file.size / 1024 / 1024 < 50
-  if (!isLt50M) {
-    ElMessage.error('文件大小不能超过 50MB')
-    return false
-  }
-
-  return true
-}
-
-// 上传成功
-function handleUploadSuccess(response: any, knowledgeId: string) {
-  ElMessage.success('文件上传成功')
-}
-
-// 上传失败
-function handleUploadError(error: any) {
-  ElMessage.error('文件上传失败')
-  console.error(error)
 }
 
 onMounted(() => {
@@ -187,81 +324,4 @@ onMounted(() => {
 })
 </script>
 
-<style scoped>
-.knowledge-page {
-  padding: 32px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 28px;
-}
-
-.page-header h2 {
-  margin: 0;
-  font-size: 22px;
-  color: #1f2937;
-  font-weight: 700;
-}
-
-.knowledge-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-  gap: 20px;
-}
-
-.knowledge-card {
-  transition: all 0.2s ease;
-  border-radius: 14px;
-  border: 1px solid #e5e7eb;
-}
-
-.knowledge-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-  border-color: rgba(99, 102, 241, 0.2);
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.card-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.card-title h3 {
-  margin: 0;
-  font-size: 17px;
-  color: #1f2937;
-  font-weight: 600;
-}
-
-.card-description {
-  color: #6b7280;
-  font-size: 14px;
-  margin: 12px 0;
-  min-height: 40px;
-}
-
-.upload-area {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
-}
-
-.upload-tip {
-  font-size: 12px;
-  color: #9ca3af;
-}
-</style>
+<style scoped>@import '../styles/knowledge-page.css';</style>

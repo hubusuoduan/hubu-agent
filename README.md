@@ -272,7 +272,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 - `POST /api/v1/auth/login` - 用户登录
 
 ### 聊天
-- `POST /api/v1/chat/message` - 发送消息（非流式）
 - `POST /api/v1/chat/stream-message` - 发送消息（SSE 流式）
 - `POST /api/v1/chat/upload-file` - 上传并解析文件
 - `GET /api/v1/chat/history/{dialog_id}` - 获取聊天历史

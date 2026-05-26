@@ -1,84 +1,146 @@
 <template>
   <div class="chat-footer">
     <div class="input-wrapper">
-      <!-- 文件预览 -->
-      <div v-if="uploadedFile" class="file-preview">
-        <el-tag closable @close="$emit('clearFile')" type="info">
-          <el-icon><Document /></el-icon>
-          {{ uploadedFile.name }}
-        </el-tag>
-      </div>
-
-      <el-input
-        v-model="inputMessage"
-        type="textarea"
-        :rows="3"
-        placeholder="输入消息... (Ctrl+Enter 发送)"
-        @keyup.ctrl.enter="$emit('sendMessage')"
-        :disabled="sending"
-        resize="none"
-        class="message-input"
-      />
-      <div class="input-actions">
-        <div class="action-left">
-          <el-upload
-            class="file-upload"
-            :auto-upload="false"
-            :on-change="handleFileChange"
-            :show-file-list="false"
-            accept=".txt,.md,.pdf,.docx,.html,.htm,.csv,.json,.xml,.xlsx,.pptx,.rtf"
-          >
-            <el-button size="default" :disabled="sending">
-              <el-icon><Upload /></el-icon>
-              上传文件
+      <!-- 批量删除模式 -->
+      <template v-if="isDeleteMode">
+        <div class="delete-mode-bar">
+          <div class="delete-mode-info">
+            <el-icon :size="18" color="#ef4444"><Delete /></el-icon>
+            <span class="delete-mode-text">已选择 <strong>{{ selectedCount }}</strong> 条消息</span>
+          </div>
+          <div class="delete-mode-actions">
+            <el-button size="default" @click="$emit('selectAll')">
+              全选
             </el-button>
-          </el-upload>
-          <span class="tip-text">支持: txt, md, pdf, docx, html, csv, json, xml, xlsx, pptx, rtf</span>
+            <el-button
+              size="default"
+              type="danger"
+              @click="$emit('confirmDelete')"
+              :disabled="selectedCount === 0"
+            >
+              <el-icon><Delete /></el-icon>
+              删除{{ selectedCount > 0 ? `(${selectedCount})` : '' }}
+            </el-button>
+            <el-button size="default" @click="$emit('cancelDelete')">
+              取消
+            </el-button>
+          </div>
         </div>
-        <div class="action-right">
-          <span class="tip-text">按 Ctrl+Enter 发送</span>
-          <el-button
-            v-if="!isGenerating"
-            type="primary"
-            @click="$emit('sendMessage')"
-            :loading="sending"
-            :disabled="!inputMessage.trim()"
-            class="send-button"
+      </template>
+      <!-- 正常模式 -->
+      <template v-else>
+        <!-- 文件预览 -->
+        <div v-if="uploadedFiles.length > 0" class="file-preview">
+          <div
+            v-for="(item, index) in uploadedFiles"
+            :key="item.file.name"
+            class="file-tag"
           >
-            <el-icon v-if="!sending"><Promotion /></el-icon>
-            {{ sending ? '发送中...' : '发送' }}
-          </el-button>
-          <el-button
-            v-else
-            type="danger"
-            @click="$emit('stopGeneration')"
-            class="stop-button"
-          >
-            <el-icon><CircleClose /></el-icon>
-            停止生成
-          </el-button>
+            <el-icon class="file-tag-icon"><Document /></el-icon>
+            <span class="file-tag-name">{{ item.file.name }}</span>
+            <el-icon class="file-tag-close" @click="$emit('removeFile', index)"><Close /></el-icon>
+          </div>
         </div>
-      </div>
+
+        <div class="input-area">
+          <el-input
+            v-model="inputMessage"
+            type="textarea"
+            :autosize="{ minRows: 3, maxRows: 6 }"
+            placeholder="输入消息..."
+            @keyup.ctrl.enter="$emit('sendMessage')"
+            :disabled="sending"
+            resize="none"
+            class="message-input"
+          />
+          <!-- 发送/停止按钮 -->
+          <div class="send-action">
+            <button
+              v-if="!isGenerating"
+              class="send-btn"
+              @click="$emit('sendMessage')"
+              :disabled="!inputMessage.trim() || sending"
+            >
+              <el-icon :size="18"><Top /></el-icon>
+            </button>
+            <button
+              v-else
+              class="stop-btn"
+              @click="$emit('stopGeneration')"
+            >
+              <el-icon :size="18"><CircleClose /></el-icon>
+            </button>
+          </div>
+        </div>
+
+        <div class="input-actions">
+          <div class="action-left">
+            <el-select
+              :model-value="currentModelId"
+              @update:model-value="$emit('switchModel', $event)"
+              placeholder="选择模型"
+              size="small"
+              class="model-select"
+              popper-class="model-select-popper"
+            >
+              <template #prefix>
+                <el-icon><Cpu /></el-icon>
+              </template>
+              <el-option
+                v-for="model in modelList"
+                :key="model.id"
+                :label="model.name"
+                :value="model.id"
+              />
+            </el-select>
+            <el-upload
+              class="file-upload"
+              :auto-upload="false"
+              :on-change="handleFileChange"
+              :show-file-list="false"
+              accept=".txt,.md,.pdf,.docx,.html,.htm,.csv,.json,.xml,.xlsx,.pptx,.rtf"
+            >
+              <button class="upload-btn" :disabled="sending">
+                <el-icon><Upload /></el-icon>
+                <span>上传文件</span>
+              </button>
+            </el-upload>
+          </div>
+          <div class="action-right">
+            <span class="tip-text">支持 txt, pdf, docx 等格式</span>
+          </div>
+        </div>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Document, Upload, Promotion, CircleClose } from '@element-plus/icons-vue'
+import { Document, Upload, Top, CircleClose, Delete, Close } from '@element-plus/icons-vue'
+import { Cpu } from '@element-plus/icons-vue'
 
 const inputMessage = defineModel<string>('inputMessage', { required: true })
 
 defineProps<{
   sending: boolean
   isGenerating: boolean
-  uploadedFile: File | null
+  uploadedFiles: Array<{ file: File; content: string }>
+  modelList: Array<{ id: string; name: string }>
+  currentModelId: string
+  isDeleteMode: boolean
+  selectedCount: number
 }>()
 
 const emit = defineEmits<{
   sendMessage: []
   stopGeneration: []
   clearFile: []
+  removeFile: [index: number]
   fileChange: [file: any]
+  switchModel: [modelId: string]
+  confirmDelete: []
+  cancelDelete: []
+  selectAll: []
 }>()
 
 function handleFileChange(uploadFileItem: any) {
@@ -86,62 +148,4 @@ function handleFileChange(uploadFileItem: any) {
 }
 </script>
 
-<style scoped>
-.chat-footer {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-  padding: 16px 28px;
-  flex-shrink: 0;
-}
-
-.input-wrapper {
-  max-width: 860px;
-  margin: 0 auto;
-}
-
-.file-preview {
-  margin-bottom: 8px;
-}
-
-.message-input :deep(.el-textarea__inner) {
-  border-radius: 12px;
-  font-size: 14px;
-  border-color: #e5e7eb;
-  transition: all 0.2s;
-}
-
-.message-input :deep(.el-textarea__inner:focus) {
-  border-color: #09b572;
-  box-shadow: 0 0 0 3px rgba(9, 181, 114, 0.1);
-}
-
-.input-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 8px;
-}
-
-.action-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.action-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.tip-text {
-  font-size: 12px;
-  color: #9ca3af;
-}
-
-.send-button, .stop-button {
-  min-width: 80px;
-}
-</style>
+<style scoped>@import '../styles/chat-input.css';</style>

@@ -43,6 +43,45 @@ export const refreshAccessToken = async (): Promise<string> => {
 }
 
 /**
+ * 解析JWT Token获取过期时间
+ * @param token JWT Token
+ * @returns 过期时间戳(毫秒)或null
+ */
+const getTokenExpireTime = (token: string): number | null => {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return payload.exp ? payload.exp * 1000 : null
+  } catch {
+    return null
+  }
+}
+
+// Token提前刷新阈值：过期前5分钟刷新
+const REFRESH_THRESHOLD = 5 * 60 * 1000
+
+/**
+ * 获取有效的访问令牌（自动刷新即将过期的Token）
+ * @returns 有效的access_token
+ */
+export const getValidAccessToken = async (): Promise<string | null> => {
+  const token = getAccessToken()
+  if (!token) return null
+
+  // 检查Token是否即将过期
+  const expireTime = getTokenExpireTime(token)
+  if (expireTime && Date.now() > expireTime - REFRESH_THRESHOLD) {
+    try {
+      return await refreshAccessToken()
+    } catch {
+      // 刷新失败，返回当前token，让后续401处理
+      return token
+    }
+  }
+
+  return token
+}
+
+/**
  * 带 Token 自动刷新的 Fetch 请求
  * @param url 请求 URL
  * @param options Fetch 选项
@@ -52,6 +91,14 @@ export const fetchWithTokenRefresh = async (
   url: string,
   options: RequestInit
 ): Promise<Response> => {
+  // 请求前主动刷新即将过期的Token
+  const validToken = await getValidAccessToken()
+  if (validToken) {
+    const headers = new Headers(options.headers || {})
+    headers.set('Authorization', `Bearer ${validToken}`)
+    options = { ...options, headers }
+  }
+
   // 第一次尝试请求
   let response = await fetch(url, options)
 
@@ -65,7 +112,6 @@ export const fetchWithTokenRefresh = async (
       const headers = new Headers(options.headers || {})
       headers.set('Authorization', `Bearer ${newToken}`)
 
-      // 对于 FormData 需要重新创建（如果有的话）
       const newOptions: RequestInit = {
         ...options,
         headers
@@ -73,7 +119,7 @@ export const fetchWithTokenRefresh = async (
 
       // 如果 body 是 FormData，需要重新创建
       if (options.body instanceof FormData) {
-        newOptions.body = options.body // FormData 可以直接复用
+        newOptions.body = options.body
       }
 
       // 使用新 token 重试请求
@@ -81,6 +127,8 @@ export const fetchWithTokenRefresh = async (
     } catch (refreshError) {
       console.error('Token refresh failed:', refreshError)
       // 刷新失败，跳转到登录页
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
       window.location.href = '/login'
       throw refreshError
     }

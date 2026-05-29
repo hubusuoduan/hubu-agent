@@ -4,17 +4,12 @@
 
 **智能体协作平台 — 让 AI Agent 协同工作**
 
-[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vue.js&logoColor=white)](https://vuejs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.121-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![LangGraph](https://img.shields.io/badge/LangGraph-1.1-1C3C3C?logo=langchain&logoColor=white)](https://github.com/langchain-ai/langgraph)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 </div>
 
 ---
 
-AgentForge 是一个开箱即用的多 Agent 在线协作平台。基于 LangGraph 构建的 Supervisor-Worker 工作流，让多个专业 Agent 分工协作完成复杂任务——信息检索、代码执行、文档生成、技能调用，一站式搞定。
+HubuAgent 是一个开箱即用的多 Agent 在线协作平台。基于 LangGraph 构建的 Supervisor-Worker 工作流，让多个专业 Agent 分工协作完成复杂任务——信息检索、代码执行、文档生成、技能调用，一站式搞定。
 
 ## ✨ 核心特性
 
@@ -29,40 +24,13 @@ AgentForge 是一个开箱即用的多 Agent 在线协作平台。基于 LangGra
 - ⚙️ **动态配置** — 运行时调整 RAG / 记忆 / Agent 参数，无需重启
 - 🔐 **多用户隔离** — JWT 认证，文件 & 技能 & 配置按用户隔离
 
-## 🏗️ 架构概览
+## 使用效果
 
-```
-用户请求
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│           LangGraph 工作流               │
-│                                         │
-│  [RAG] [Memory] [History] ── 并行 ──┐  │
-│                                      ▼  │
-│                                  Merge   │
-│                                      │   │
-│                                 Supervisor│
-│                    ┌─────┬─────┬─────┼───┤
-│                    ▼     ▼     ▼     ▼   │
-│                  Chat  Research Coder ... │
-│                    └─────┴─────┴─────┘   │
-│                          │               │
-│                      Reviewer             │
-│                       ╱     ╲            │
-│                   通过 ✅   重试 🔁       │
-│                      │                    │
-│                      ▼                    │
-│                   响应输出                 │
-└─────────────────────────────────────────┘
-    │
-    ▼
-  异步记忆提取
-```
+![Hubu Agent 使用效果](png/using.png)
 
-## 📸 使用效果
+##项目核心架构
 
-![Hubu Agent 使用效果](using.png)
+![Hubu Agent 架构](png/structure.png)
 
 ## 🚀 快速开始
 

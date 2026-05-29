@@ -60,6 +60,10 @@ AgentForge 是一个开箱即用的多 Agent 在线协作平台。基于 LangGra
   异步记忆提取
 ```
 
+## 📸 使用效果
+
+![Hubu Agent 使用效果](using.png)
+
 ## 🚀 快速开始
 
 ### 环境要求

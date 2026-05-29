@@ -32,8 +32,17 @@ class UsageMetadataCallback(BaseCallbackHandler):
             if not usage_metadata:
                 return
 
-            input_tokens = usage_metadata.get("input_tokens", 0)
-            output_tokens = usage_metadata.get("output_tokens", 0)
+            # 兼容不同格式：dict / int / 其他
+            if isinstance(usage_metadata, int):
+                input_tokens = 0
+                output_tokens = usage_metadata
+            elif isinstance(usage_metadata, dict):
+                input_tokens = usage_metadata.get("input_tokens", 0)
+                output_tokens = usage_metadata.get("output_tokens", 0)
+            else:
+                # 尝试属性访问（LangChain UsageMetadata 对象）
+                input_tokens = getattr(usage_metadata, "input_tokens", 0)
+                output_tokens = getattr(usage_metadata, "output_tokens", 0)
 
             if input_tokens == 0 and output_tokens == 0:
                 return
@@ -41,14 +50,19 @@ class UsageMetadataCallback(BaseCallbackHandler):
             # 提取模型名称
             model_name = ""
             if hasattr(response, "llm_output") and response.llm_output:
-                model_name = response.llm_output.get("model_name", "")
+                llm_output = response.llm_output
+                if isinstance(llm_output, dict):
+                    model_name = llm_output.get("model_name", "")
             if not model_name:
                 # 从 message 的 response_metadata 中获取
                 resp_meta = getattr(message, "response_metadata", {})
-                model_name = resp_meta.get("model_name", "") or resp_meta.get("model", "")
+                if isinstance(resp_meta, dict):
+                    model_name = resp_meta.get("model_name", "") or resp_meta.get("model", "")
 
-            # 通过 ContextVar 获取 user_id
+            # 通过 ContextVar 获取 user_id（int → str）
             user_id = current_user_id.get()
+            if user_id is not None:
+                user_id = str(user_id)
 
             # 使用同步方法累加写入：同一天同模型同用户则累加，否则新建
             from app.database.dao.usage_stats_dao import UsageStatsDao

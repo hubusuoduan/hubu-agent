@@ -149,14 +149,18 @@ class BaseReactAgent:
             更新后的状态字典，包含 response 和 agent_scratchpad
         """
         user_input = state.get("user_input", "")
+        task_instruction = state.get("task_instruction", "")
         context = state.get("context")
         messages = state.get("messages", [])
         review_feedback = state.get("review_feedback", "")
         agent_scratchpad = state.get("agent_scratchpad", [])
 
+        # 如果有任务指令，用任务指令替代原始用户输入
+        effective_input = task_instruction if task_instruction else user_input
+
         # 构建输入消息
         input_messages = cls.build_input_messages(
-            user_input=user_input,
+            user_input=effective_input,
             context=context,
             messages=messages,
             review_feedback=review_feedback,

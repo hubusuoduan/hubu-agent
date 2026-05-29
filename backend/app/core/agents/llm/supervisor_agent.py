@@ -1,4 +1,4 @@
-"""Supervisor Agent - 意图路由"""
+"""Supervisor Agent - 任务规划"""
 from typing import List, Optional
 from loguru import logger
 
@@ -6,6 +6,7 @@ from app.core.agents.bases import BaseLLMAgent
 from app.core.graph.state import ChatState
 from app.services.settings_service import SettingsFactory
 from app.prompts import load_prompt
+from app.utils.text import parse_json
 
 # 系统 Agent 名称（固定）
 SYSTEM_AGENTS = {"chat", "researcher", "coder", "skill"}
@@ -49,9 +50,9 @@ def _build_agent_descriptions(user_agents_desc: list = None) -> str:
 
 
 class SupervisorAgent(BaseLLMAgent):
-    """Supervisor Agent - 意图路由
+    """Supervisor Agent - 任务规划
 
-    分析用户输入和当前状态，返回路由决策。
+    分析用户输入和当前状态，制定任务执行计划。
     继承 BaseLLMAgent（单次 LLM 调用）。
     """
 
@@ -65,8 +66,14 @@ class SupervisorAgent(BaseLLMAgent):
         review_feedback = state.get("review_feedback", "")
         retry_count = state.get("retry_count", 0)
         agent_scratchpad = state.get("agent_scratchpad", [])
+        task_plan = state.get("task_plan", [])
+        plan_index = state.get("plan_index", 0)
 
         context_parts = [f"用户输入: {user_input}"]
+
+        if task_plan:
+            context_parts.append(f"当前任务计划: {task_plan}")
+            context_parts.append(f"已执行到第 {plan_index} 步")
 
         if agent_scratchpad:
             from app.utils.text import format_scratchpad
@@ -95,8 +102,8 @@ class SupervisorAgent(BaseLLMAgent):
         return template.replace("{{agent_descriptions}}", agent_descriptions)
 
     @classmethod
-    async def route(cls, state: ChatState, user_agents_desc: list = None) -> str:
-        """执行路由决策（纯 LLM 调用）
+    async def plan(cls, state: ChatState, user_agents_desc: list = None) -> Optional[List[dict]]:
+        """制定任务执行计划（纯 LLM 调用）
 
         Args:
             state: Graph 状态
@@ -104,7 +111,7 @@ class SupervisorAgent(BaseLLMAgent):
                 [{"name": "user_translator", "display_name": "翻译官", "description": "..."}]
 
         Returns:
-            Agent 名称字符串，或 None（调用失败）
+            任务计划列表，如 [{"agent": "researcher", "task": "搜索信息"}, ...]，或 None（调用失败）
         """
         try:
             # 动态构建 system_prompt（注入用户 Agent 描述）
@@ -112,9 +119,38 @@ class SupervisorAgent(BaseLLMAgent):
             user_prompt = await cls._build_user_prompt(state)
             response_text = await cls.invoke_llm(user_prompt, system_prompt=system_prompt)
 
-            next_agent = response_text.lower().strip()
-            logger.info(f"Supervisor LLM 返回: {next_agent}")
-            return next_agent
+            logger.info(f"Supervisor LLM 返回: {response_text[:200]}")
+
+            # 解析 JSON 格式的任务计划
+            result = parse_json(response_text)
+            if result and isinstance(result.get("plan"), list):
+                plan = []
+                for item in result["plan"]:
+                    if isinstance(item, dict) and item.get("agent"):
+                        plan.append({
+                            "agent": str(item["agent"]).strip().lower(),
+                            "task": str(item.get("task", "")).strip(),
+                        })
+                    elif isinstance(item, str) and item.strip():
+                        # 兼容旧格式：纯字符串
+                        plan.append({"agent": item.strip().lower(), "task": ""})
+                if plan:
+                    logger.info(f"Supervisor 任务计划: {plan}")
+                    return plan
+
+            # JSON 解析失败，尝试从文本中提取 Agent 名称
+            logger.warning(f"Supervisor JSON 解析失败，尝试从文本提取: {response_text[:100]}")
+            plan = []
+            for word in response_text.lower().split():
+                word = word.strip("[]\"'")
+                if word in SYSTEM_AGENTS or word.startswith("user_"):
+                    plan.append({"agent": word, "task": ""})
+            if plan:
+                logger.info(f"Supervisor 从文本提取计划: {plan}")
+                return plan
+
+            logger.warning("Supervisor 未能生成有效计划")
+            return None
 
         except Exception as e:
             logger.error(f"Supervisor Agent 执行失败: {e}")

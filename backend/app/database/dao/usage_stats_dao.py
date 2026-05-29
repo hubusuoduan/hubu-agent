@@ -51,7 +51,7 @@ class UsageStatsDao:
                 await session.commit()
                 await session.refresh(existing)
                 logger.debug(
-                    f"Token 累加: user={user_id[:8]}, model={model}, "
+                    f"Token 累加: user={str(user_id)[:8]}, model={model}, "
                     f"+input={input_tokens}, +output={output_tokens}"
                 )
                 return existing
@@ -68,7 +68,7 @@ class UsageStatsDao:
                 await session.commit()
                 await session.refresh(record)
                 logger.debug(
-                    f"Token 新建: user={user_id[:8]}, model={model}, "
+                    f"Token 新建: user={str(user_id)[:8]}, model={model}, "
                     f"input={input_tokens}, output={output_tokens}"
                 )
                 return record
@@ -107,7 +107,7 @@ class UsageStatsDao:
                 session.commit()
                 session.refresh(existing)
                 logger.debug(
-                    f"Token 累加(sync): user={user_id[:8]}, model={model}, "
+                    f"Token 累加(sync): user={str(user_id)[:8]}, model={model}, "
                     f"+input={input_tokens}, +output={output_tokens}"
                 )
                 return existing
@@ -124,7 +124,7 @@ class UsageStatsDao:
                 session.commit()
                 session.refresh(record)
                 logger.debug(
-                    f"Token 新建(sync): user={user_id[:8]}, model={model}, "
+                    f"Token 新建(sync): user={str(user_id)[:8]}, model={model}, "
                     f"input={input_tokens}, output={output_tokens}"
                 )
                 return record

@@ -1,21 +1,24 @@
 """Graph 主文件 - 多 Agent 协作拓扑
 
 拓扑结构:
-START → [rag, memory, history_manager] 并行 → merge → supervisor（循环路由）
+START → [rag, memory, history_manager] 并行 → merge → supervisor（任务规划+调度）
                                                            │
                                                  ┌─────────┼─────────┬──────────┐──────────┐
                                                  ▼         ▼         ▼          ▼          ▼
-                                               chat    researcher  coder     writer   用户Agent...
+                                               chat    researcher  coder     skill    用户Agent...
                                                  │         │         │          │          │
                                                  └─────────┴─────────┴──────────┘──────────┘
                                                            │
                                                            ▼
                                                        reviewer
-                                                      ╱        ╲
-                                                 通过 ✅      不够 🔁
-                                                  │              │
-                                                  ▼              └→ 回到 supervisor
-                                                 END
+                                                      ╱    |    ╲
+                                               通过 ✅  推进 ➡️  重试 🔁
+                                                  │        │        │
+                                                  ▼        └→ supervisor（推进下一步）
+                                                 END                └→ supervisor（重新规划）
+
+Supervisor 制定任务计划（如 ["researcher", "skill"]），按步骤调度 Agent。
+Reviewer 判断：advance → Supervisor 推进下一步，retry → Supervisor 重新规划，pass → END。
 
 注意: memory_extract 已从 graph 中移除，改为 reviewer 通过后异步后台执行，
 避免记忆提取耗时阻塞工作流结束。
@@ -130,6 +133,17 @@ def _summarize_node_output(node_name: str, output: ChatState) -> str:
             return "无可合并内容"
         elif node_name == "supervisor":
             next_agent = output.get("next_agent", "")
+            task_plan = output.get("task_plan", state.get("task_plan", []))
+            plan_index = output.get("plan_index", state.get("plan_index", 0))
+            task_instruction = output.get("task_instruction", "")
+            if task_plan and len(task_plan) > 1:
+                plan_summary = " → ".join(
+                    s.get("agent", "?") if isinstance(s, dict) else str(s)
+                    for s in task_plan
+                )
+                return f"计划: {plan_summary}，当前: {next_agent} ({plan_index + 1}/{len(task_plan)})"
+            if task_instruction:
+                return f"路由到: {next_agent} — {task_instruction[:50]}"
             return f"路由到: {next_agent}"
         elif node_name in AGENT_NODES or node_name.startswith("user_"):
             resp = output.get("response", "")
@@ -139,6 +153,11 @@ def _summarize_node_output(node_name: str, output: ChatState) -> str:
             feedback = output.get("review_feedback", "")
             if result == "pass":
                 return "审查通过 ✅"
+            elif result == "advance":
+                plan = output.get("task_plan", state.get("task_plan", []))
+                idx = output.get("plan_index", state.get("plan_index", 0))
+                next_step = plan[idx + 1] if idx + 1 < len(plan) else "?"
+                return f"推进 ➡️ 下一步: {next_step}"
             return f"需要补充 🔁: {feedback[:50]}"
         return ""
     except Exception:
@@ -213,9 +232,9 @@ async def _background_memory_extract(state: ChatState) -> None:
 
 
 def _route_after_reviewer(state: ChatState) -> str:
-    """Reviewer 之后的条件路由：通过 → END，不够 → supervisor"""
+    """Reviewer 之后的条件路由：通过 → END，推进/重试 → supervisor"""
     review_result = state.get("review_result", "pass")
-    if review_result == "retry":
+    if review_result in ("retry", "advance"):
         return "supervisor"
     return END
 
@@ -369,6 +388,9 @@ async def run_stream_chat_graph_with_trace(
         user_id=user_id,
         response="",
         next_agent="",
+        task_plan=[],
+        task_instruction="",
+        plan_index=0,
         review_result="",
         review_feedback="",
         retry_count=0,

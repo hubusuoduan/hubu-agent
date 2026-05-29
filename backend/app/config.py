@@ -125,6 +125,7 @@ class Settings(BaseSettings):
         env_file = str(ENV_FILE)
         env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"  # .env 中的旧字段不再报错，自动忽略
 
 
 # 创建全局配置实例

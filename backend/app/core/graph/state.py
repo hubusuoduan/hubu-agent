@@ -27,7 +27,10 @@ class ChatState(TypedDict):
         user_id: 用户ID
         response: AI 的最终回复
         next_agent: Supervisor 路由决策，决定下一个执行的 Agent
-        review_result: Reviewer 审查结果 ("pass" / "retry")
+        task_plan: Supervisor 制定的任务计划，格式: [{"agent": "researcher", "task": "搜索信息"}, ...]
+        plan_index: 当前执行到任务计划的第几步（从 0 开始）
+        task_instruction: 当前步骤的任务指令（Supervisor 为当前 Agent 生成的具体说明）
+        review_result: Reviewer 审查结果 ("pass" / "retry" / "advance")
         review_feedback: Reviewer 审查反馈（不够时说明缺什么）
         retry_count: 当前重试次数（防止死循环）
         agent_scratchpad: 各 Agent 的执行记录列表，格式: [{"agent": "researcher", "output": "..."}]
@@ -42,6 +45,9 @@ class ChatState(TypedDict):
     user_id: str
     response: str
     next_agent: str
+    task_plan: list
+    plan_index: int
+    task_instruction: str
     review_result: str
     review_feedback: str
     retry_count: int

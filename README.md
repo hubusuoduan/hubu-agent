@@ -14,7 +14,7 @@
 
 ---
 
-AgentForge 是一个开箱即用的多 Agent 在线协作平台。基于 LangGraph 构建的 Supervisor-Worker 工作流，让多个专业 Agent 分工协作完成复杂任务——信息检索、代码执行、文档生成、技能调用，一站式搞定。
+HubuAgent 是一个开箱即用的多 Agent 在线协作平台。基于 LangGraph 构建的 Supervisor-Worker 工作流，让多个专业 Agent 分工协作完成复杂任务——信息检索、代码执行、文档生成、技能调用，一站式搞定。
 
 ## ✨ 核心特性
 

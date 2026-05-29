@@ -200,6 +200,28 @@
 
 
 
+/* RAG_HYBRID_WEIGHTS 双滑块 */
+.hybrid-weights-control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 300px;
+}
+
+.weight-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.weight-label {
+  font-size: 12px;
+  color: #6b7280;
+  width: 32px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
 .reset-btn {
   flex-shrink: 0;
   color: #9ca3af !important;
@@ -250,4 +272,47 @@
 
 :deep(.el-input-number .el-input__inner:focus) {
   border-color: #0891b2;
+}
+
+/* ========== Embedding 供应商配置 ========== */
+.embedding-group {
+  border: 1px solid rgba(8, 145, 178, 0.15);
+  background: linear-gradient(135deg, rgba(8, 145, 178, 0.02) 0%, rgba(8, 145, 178, 0.01) 100%);
+}
+
+.embedding-group:hover {
+  box-shadow: 0 4px 16px rgba(8, 145, 178, 0.08);
+}
+
+.embedding-empty {
+  padding: 24px;
+  text-align: center;
+}
+
+.embedding-empty p {
+  color: #6b7280;
+  font-size: 14px;
+  margin: 0 0 16px 0;
+}
+
+.embedding-value {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.embedding-value.masked {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  color: #9ca3af;
+  letter-spacing: 1px;
+}
+
+.embedding-value.url {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 13px;
+  color: #6b7280;
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

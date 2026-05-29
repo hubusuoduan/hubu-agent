@@ -5,6 +5,7 @@ export interface SkillInfo {
   name: string
   description: string
   dir_name: string
+  source: 'system' | 'user'
 }
 
 export interface SkillListResponse {

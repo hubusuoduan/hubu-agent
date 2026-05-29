@@ -1,5 +1,3 @@
-import asyncio
-
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from typing import Optional, List
 from loguru import logger
@@ -8,7 +6,6 @@ import os
 import tempfile
 
 from app.core.graph.graph import run_stream_chat_graph_with_trace
-from app.core.graph.nodes.memory_extract_node import memory_extract_node
 from app.database.dao.history_dao import HistoryDao
 from app.database.dao.dialog_dao import DialogDao
 from app.database.session import get_async_session
@@ -107,6 +104,21 @@ async def send_stream_message(
 
     以 SSE 格式流式返回 AI 的回复
     """
+    # 在请求入口设置 ContextVar（current_user_id 已由中间件统一设置）
+    from app.callbacks import current_workspace_dir, current_skills_dir
+    from app.config import settings as app_settings
+    current_workspace_dir.set(str(app_settings.file_workspace_path(current_user.id)))
+    # Skills 目录：用户目录 + 系统目录，用 os.pathsep 分隔
+    _user_skills = str(app_settings.skills_path(current_user.id))
+    _system_skills = str(app_settings.skills_base_path)
+    current_skills_dir.set(os.pathsep.join([_user_skills, _system_skills]))
+
+    # 为用户创建 LLM 模型实例 & 加载用户配置（请求级工厂初始化，user_id 从 ContextVar 获取）
+    from app.services.settings_service import SettingsFactory
+    await SettingsFactory.create_for_user()
+    from app.services.llm_service import LLMService
+    await LLMService.create_for_user()
+
     try:
         # 获取或创建对话
         dialog_id = chat_message.dialog_id
@@ -142,13 +154,10 @@ async def send_stream_message(
                 dialog_id=dialog_id,
                 k=10
             )
-            from langchain_core.messages import HumanMessage, AIMessage
-            messages = []
-            for h in histories:
-                if h.role == "user":
-                    messages.append(HumanMessage(content=h.content))
-                elif h.role == "assistant":
-                    messages.append(AIMessage(content=h.content))
+            from app.utils.message import dicts_to_lc_messages
+            messages = dicts_to_lc_messages(
+                [{"role": h.role, "content": h.content} for h in histories]
+            )
         except Exception as db_error:
             logger.warning(f"加载历史消息失败: {db_error}")
             messages = []
@@ -166,16 +175,23 @@ async def send_stream_message(
                 init_data = json.dumps({"type": "dialog_init", "dialog_id": dialog_id}, ensure_ascii=False)
                 yield f"data: {init_data}\n\n"
 
-                # 设置 ContextVar，让 Token 采集 Callback 能获取 user_id
-                from app.callbacks import current_user_id
-                current_user_id.set(str(current_user.id))
+                # 查询用户启用的自建 Agent，动态注入工作流
+                user_agent_configs = []
+                try:
+                    from app.database.dao.user_agent_dao import UserAgentDao
+                    from app.core.agents.custom.loader import load_agent_configs
+                    agent_records = await UserAgentDao.get_enabled_by_user_id(current_user.id)
+                    user_agent_configs = load_agent_configs(agent_records)
+                except Exception as e:
+                    logger.warning(f"加载用户自建 Agent 失败（不影响主流程）: {e}")
 
                 # 使用带节点追踪的流式 Graph 函数
                 async for event in run_stream_chat_graph_with_trace(
                     user_input=user_input,
                     session_id=dialog_id,
-                    user_id=current_user.id,
-                    messages=messages
+                    user_id=str(current_user.id),
+                    messages=messages,
+                    user_agents=user_agent_configs if user_agent_configs else None,
                 ):
                     if isinstance(event, dict):
                         event_type = event.get("type", "")
@@ -197,22 +213,7 @@ async def send_stream_message(
 
                 logger.info(f"流式输出完成，总长度: {len(full_response)}")
 
-                # 异步触发记忆提取（不阻塞响应）
-                async def _do_extract():
-                    try:
-                        state = {
-                            "messages": messages,
-                            "user_input": user_input,
-                            "context": None,
-                            "session_id": dialog_id,
-                            "user_id": current_user.id,
-                            "response": full_response
-                        }
-                        await memory_extract_node(state)
-                    except Exception as e:
-                        logger.error(f"异步记忆提取失败: {e}")
-
-                asyncio.create_task(_do_extract())
+                # 记忆提取现在由 Graph 内部的 memory_extract 节点完成，不再需要异步触发
 
                 # 发送结束标记，附带 dialog_id
                 done_data = json.dumps({"done": True, "dialog_id": dialog_id}, ensure_ascii=False)

@@ -1,11 +1,9 @@
 """Token 使用量采集 Callback - 基于 LangChain BaseCallbackHandler"""
-from contextvars import ContextVar
 from typing import Any
 from loguru import logger
 from langchain_core.callbacks import BaseCallbackHandler
 
-# ContextVar 用于在请求级别传递 user_id
-current_user_id: ContextVar[str] = ContextVar("current_user_id", default="")
+from app.middleware.user_context import current_user_id
 
 
 class UsageMetadataCallback(BaseCallbackHandler):
@@ -50,27 +48,21 @@ class UsageMetadataCallback(BaseCallbackHandler):
                 model_name = resp_meta.get("model_name", "") or resp_meta.get("model", "")
 
             # 通过 ContextVar 获取 user_id
-            user_id = current_user_id.get("")
+            user_id = current_user_id.get()
 
-            # 使用同步引擎直接写入数据库
-            # Callback 是同步方法，不适合 await，用同步引擎更可靠
-            from app.database.engine import engine as sync_engine
-            from sqlmodel import Session
-            from app.database.models.usage_stats import UsageStatsTable
+            # 使用同步方法累加写入：同一天同模型同用户则累加，否则新建
+            from app.database.dao.usage_stats_dao import UsageStatsDao
 
-            record = UsageStatsTable(
+            UsageStatsDao.upsert_usage_stats_sync(
                 user_id=user_id,
                 model=model_name,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
             )
-            with Session(sync_engine) as session:
-                session.add(record)
-                session.commit()
 
             logger.debug(
                 f"Token 采集: model={model_name}, "
-                f"input={input_tokens}, output={output_tokens}, user={user_id[:8] if user_id else 'unknown'}"
+                f"input={input_tokens}, output={output_tokens}, user={user_id or 'unknown'}"
             )
 
         except Exception as e:

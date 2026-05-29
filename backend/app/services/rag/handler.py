@@ -2,7 +2,7 @@
 from typing import List, Optional
 from loguru import logger
 
-from app.config import settings
+from app.services.settings_service import SettingsFactory
 from app.services.rag.embedding import get_embedding
 from app.services.rag.vector_store import vector_store
 from app.services.rag.reranker import reranker, RerankedDocument
@@ -82,11 +82,11 @@ class RagHandler:
         Returns:
             检索到的相关文档内容
         """
-        # 使用配置中的默认值
+        # 使用用户配置中的默认值
         if top_k is None:
-            top_k = settings.RAG_TOP_K
+            top_k = SettingsFactory.get(key="RAG_TOP_K")
         if min_score is None:
-            min_score = settings.RAG_MIN_SCORE
+            min_score = SettingsFactory.get(key="RAG_MIN_SCORE")
             
         logger.info(f"开始RAG查询: query长度={len(query)}, 知识库数量={len(knowledge_ids)}, top_k={top_k}, min_score={min_score}")
         
@@ -115,7 +115,7 @@ class RagHandler:
         logger.info(f"去重后剩余 {len(unique_docs)} 个唯一文档")
         
         # 4. 重排序(传入元数据)
-        reranker_top_n = settings.RAG_RERANKER_TOP_N
+        reranker_top_n = SettingsFactory.get(key="RAG_RERANKER_TOP_N")
         doc_contents = [doc.get("content", "") for doc in unique_docs[:reranker_top_n]]  # 从配置读取重排序数量
         doc_metadata = [{"chunk_id": doc.get("chunk_id"), "file_name": doc.get("file_name")} for doc in unique_docs[:reranker_top_n]]
         

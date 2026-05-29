@@ -7,7 +7,8 @@ from loguru import logger
 
 from app.api.dependencies import get_current_user
 from app.database.models.user import User
-from app.tools.skill_loader.action import SKILLS_DIR, SKILL_REGISTRY, _scan_skills, _parse_frontmatter
+from app.config import settings
+from app.tools.skill_loader import SYSTEM_SKILLS_DIR, SKILL_REGISTRY, _scan_dir, _scan_skills, _parse_frontmatter
 
 router = APIRouter(prefix="/skills", tags=["技能管理"])
 
@@ -31,27 +32,38 @@ async def list_skills(
     if page_size < 1 or page_size > 100:
         page_size = 20
 
-    # 从 SKILL_REGISTRY 获取所有技能
+    # 合并系统 + 用户注册表
+    registry = _scan_skills(current_user.id)
+    user_skills_dir = settings.skills_path(current_user.id)
+
     items = []
-    for name, description in SKILL_REGISTRY.items():
+    for name, description in registry.items():
         if keyword:
             if keyword.lower() not in name.lower() and keyword.lower() not in description.lower():
                 continue
-        # 获取目录名（用于删除等操作）
+        # 判断来源：用户目录 or 系统目录
+        source = "system"
         dir_name = name
-        # 尝试匹配实际目录名
-        if SKILLS_DIR.exists():
-            for d in SKILLS_DIR.iterdir():
-                if d.is_dir() and (d / "SKILL.md").exists():
-                    content = (d / "SKILL.md").read_text(encoding="utf-8")
-                    meta, _ = _parse_frontmatter(content)
-                    if meta.get("name", d.name) == name:
-                        dir_name = d.name
-                        break
+        # 先查用户目录
+        user_skill_dir = user_skills_dir / name
+        if user_skill_dir.is_dir() and (user_skill_dir / "SKILL.md").exists():
+            source = "user"
+            dir_name = name
+        else:
+            # 再查系统目录
+            if SYSTEM_SKILLS_DIR.exists():
+                for d in SYSTEM_SKILLS_DIR.iterdir():
+                    if d.is_dir() and (d / "SKILL.md").exists():
+                        content = (d / "SKILL.md").read_text(encoding="utf-8")
+                        meta, _ = _parse_frontmatter(content)
+                        if meta.get("name", d.name) == name:
+                            dir_name = d.name
+                            break
         items.append({
             "name": name,
             "description": description,
             "dir_name": dir_name,
+            "source": source,
         })
 
     total = len(items)
@@ -84,11 +96,14 @@ async def add_skill(
     if not name or not name.replace("-", "").replace("_", "").isalnum():
         raise HTTPException(status_code=400, detail="技能名称仅允许字母、数字、连字符和下划线")
 
-    # 检查是否已存在
-    if name in SKILL_REGISTRY:
+    # 检查是否已存在（合并系统+用户注册表）
+    registry = _scan_skills(current_user.id)
+    if name in registry:
         raise HTTPException(status_code=400, detail=f"技能 '{name}' 已存在")
 
-    skill_dir = SKILLS_DIR / name
+    # 写入用户目录
+    user_skills_dir = settings.skills_path(current_user.id)
+    skill_dir = user_skills_dir / name
     if skill_dir.exists():
         raise HTTPException(status_code=400, detail=f"技能目录 '{name}' 已存在")
 
@@ -112,8 +127,9 @@ description: "{description}"
     skill_md_path = skill_dir / "SKILL.md"
     skill_md_path.write_text(md_content, encoding="utf-8")
 
-    # 刷新注册表
-    SKILL_REGISTRY.update(_scan_skills())
+    # 刷新系统级注册表（用户级动态扫描）
+    SKILL_REGISTRY.clear()
+    SKILL_REGISTRY.update(_scan_dir(SYSTEM_SKILLS_DIR))
 
     logger.info(f"技能 '{name}' 创建成功")
 
@@ -221,10 +237,13 @@ async def upload_skill(
         if not final_name.replace("-", "").replace("_", "").isalnum():
             raise HTTPException(status_code=400, detail="技能名称仅允许字母、数字、连字符和下划线")
 
-        if final_name in SKILL_REGISTRY:
+        registry = _scan_skills(current_user.id)
+        if final_name in registry:
             raise HTTPException(status_code=400, detail=f"技能 '{final_name}' 已存在")
 
-        skill_dir = SKILLS_DIR / final_name
+        # 写入用户目录
+        user_skills_dir = settings.skills_path(current_user.id)
+        skill_dir = user_skills_dir / final_name
         if skill_dir.exists():
             raise HTTPException(status_code=400, detail=f"技能目录 '{final_name}' 已存在")
 
@@ -244,8 +263,9 @@ description: "{final_desc}"
         # 第四步：移动到正式目录
         shutil.move(str(tmp_extract), str(skill_dir))
 
-        # 刷新注册表
-        SKILL_REGISTRY.update(_scan_skills())
+        # 刷新系统级注册表（用户级动态扫描）
+        SKILL_REGISTRY.clear()
+        SKILL_REGISTRY.update(_scan_dir(SYSTEM_SKILLS_DIR))
 
         logger.info(f"技能包 '{final_name}' 上传成功")
 
@@ -283,22 +303,24 @@ async def delete_skill(
     skill_name: str,
     current_user: User = Depends(get_current_user),
 ):
-    """删除指定技能（删除整个目录）
+    """删除指定技能（仅能删除用户自建技能，系统技能不可删除）
 
     Args:
         skill_name: 技能名称
     """
-    if skill_name not in SKILL_REGISTRY:
+    registry = _scan_skills(current_user.id)
+    if skill_name not in registry:
         raise HTTPException(status_code=404, detail=f"技能 '{skill_name}' 不存在")
 
-    skill_dir = SKILLS_DIR / skill_name
+    # 只允许删除用户目录下的 Skill
+    user_skills_dir = settings.skills_path(current_user.id)
+    skill_dir = user_skills_dir / skill_name
 
-    # 也尝试按目录名查找
-    if not skill_dir.exists():
-        # 按注册表中的 name 查找实际目录
+    # 也尝试按目录名查找用户目录
+    if not skill_dir.exists() or not (skill_dir / "SKILL.md").exists():
         found = False
-        if SKILLS_DIR.exists():
-            for d in SKILLS_DIR.iterdir():
+        if user_skills_dir.exists():
+            for d in user_skills_dir.iterdir():
                 if d.is_dir() and (d / "SKILL.md").exists():
                     content = (d / "SKILL.md").read_text(encoding="utf-8")
                     meta, _ = _parse_frontmatter(content)
@@ -307,21 +329,25 @@ async def delete_skill(
                         found = True
                         break
         if not found:
+            # 检查是否是系统 Skill
+            system_skill_dir = SYSTEM_SKILLS_DIR / skill_name
+            if system_skill_dir.exists() and (system_skill_dir / "SKILL.md").exists():
+                raise HTTPException(status_code=403, detail=f"系统技能 '{skill_name}' 不可删除")
             raise HTTPException(status_code=404, detail=f"技能 '{skill_name}' 目录不存在")
 
-    # 安全检查：确保路径在 skills 目录内
+    # 安全检查：确保路径在用户 skills 目录内
     try:
-        skill_dir.resolve().relative_to(SKILLS_DIR.resolve())
+        skill_dir.resolve().relative_to(user_skills_dir.resolve())
     except ValueError:
         raise HTTPException(status_code=400, detail="非法路径")
 
     # 删除目录
     shutil.rmtree(skill_dir)
 
-    # 刷新注册表
+    # 刷新系统级注册表（用户级动态扫描）
     SKILL_REGISTRY.clear()
-    SKILL_REGISTRY.update(_scan_skills())
+    SKILL_REGISTRY.update(_scan_dir(SYSTEM_SKILLS_DIR))
 
-    logger.info(f"技能 '{skill_name}' 已删除")
+    logger.info(f"用户 {current_user.id} 删除技能 '{skill_name}'")
 
     return {"message": f"技能 '{skill_name}' 删除成功"}

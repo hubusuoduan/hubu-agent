@@ -2,7 +2,6 @@
 from typing import List, Dict
 import tiktoken
 from loguru import logger
-from app.config import settings
 
 
 class TokenCounter:
@@ -12,16 +11,16 @@ class TokenCounter:
     用于上下文长度控制和动态截断。
     """
     
-    def __init__(self, model_name: str = None, summary_agent = None):
+    def __init__(self, model_name: str = None, state: dict = None):
         """
         初始化 Token 计数器
         
         Args:
             model_name: 模型名称，用于选择合适的encoder
-            summary_agent: SummaryAgent实例，用于生成丢弃消息的摘要
+            state: Graph 状态（供 SummaryAgent 构建提示词）
         """
-        self.model_name = model_name or settings.LLM_MODEL
-        self.summary_agent = summary_agent
+        self.model_name = model_name or "gpt-3.5-turbo"
+        self.state = state
         try:
             # 尝试获取对应模型的encoder
             self.encoder = tiktoken.encoding_for_model(self.model_name)
@@ -130,9 +129,15 @@ class TokenCounter:
         
         # 如果有被丢弃的消息，使用 SummaryAgent 生成二次摘要
         final_messages = retained_messages
-        if discarded_messages and self.summary_agent:
+        if discarded_messages and self.state:
             try:
-                summary_text = await self.summary_agent.summarize(discarded_messages)
+                from app.core.agents.llm import SummaryAgent
+
+                # 构建临时 state 供 SummaryAgent 使用
+                summary_state = dict(self.state)
+                summary_state["messages"] = discarded_messages
+
+                summary_text = await SummaryAgent.summarize(summary_state)
                 
                 if summary_text:
                     # 创建二次摘要消息（不计算token占用）
@@ -148,7 +153,7 @@ class TokenCounter:
             except Exception as e:
                 logger.error(f"生成二次摘要失败: {e}")
         elif discarded_messages:
-            logger.info(f"丢弃 {len(discarded_messages)} 条消息（无SummaryAgent）")
+            logger.info(f"丢弃 {len(discarded_messages)} 条消息（无 state，无法生成摘要）")
         
         # 如果有原始摘要，添加到最开头
         if first_message:

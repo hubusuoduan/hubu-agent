@@ -62,44 +62,119 @@
     </div>
 
     <!-- 技能列表 -->
-    <div class="skills-list" v-loading="loading">
-      <div
-        v-for="skill in skillList"
-        :key="skill.name"
-        class="skill-card"
-        :class="{ 'card-selected': selectedNames.includes(skill.name), 'card-selectable': batchMode }"
-        @click="handleCardClick(skill)"
-      >
-        <div class="card-color-bar"></div>
-        <div class="card-body">
-          <div class="card-header">
-            <div v-if="batchMode" class="card-checkbox" @click.stop="toggleSelect(skill.name)">
-              <el-checkbox :model-value="selectedNames.includes(skill.name)" />
-            </div>
-            <div class="card-icon">
-              <el-icon :size="20" color="#6366f1"><SetUp /></el-icon>
-            </div>
-            <div class="card-title-area">
-              <h3>{{ skill.name }}</h3>
-              <p class="card-description">{{ skill.description || '暂无描述' }}</p>
-            </div>
+    <div class="skills-list-wrapper" v-loading="loading">
+      <!-- 系统技能 -->
+      <template v-if="systemSkills.length > 0">
+        <div class="skill-section-header">
+          <div class="section-icon system-icon">
+            <el-icon :size="16" color="#6366f1"><Monitor /></el-icon>
           </div>
-          <div class="card-footer">
-            <div class="card-meta">
-              <span class="meta-item">
-                <el-icon :size="12"><Folder /></el-icon>
-                {{ skill.dir_name }}
-              </span>
-            </div>
-            <div class="card-actions" v-if="!batchMode">
-              <div class="action-icon-btn danger" @click="handleDelete(skill.name)">
-                <el-icon :size="14"><Delete /></el-icon>
+          <span class="section-title">系统内置技能</span>
+          <span class="section-count">{{ systemSkills.length }} 个</span>
+        </div>
+        <div class="skills-list">
+          <div
+            v-for="skill in systemSkills"
+            :key="skill.name"
+            class="skill-card system-skill"
+            :class="{ 'card-selected': selectedNames.includes(skill.name), 'card-selectable': batchMode, 'card-disabled': batchMode }"
+            @click="handleCardClick(skill)"
+          >
+            <div class="card-color-bar system-bar"></div>
+            <div class="card-body">
+              <div class="card-header">
+                <div v-if="batchMode" class="card-checkbox" @click.stop="toggleSelect(skill.name)">
+                  <el-checkbox :model-value="selectedNames.includes(skill.name)" />
+                </div>
+                <div class="card-icon system-card-icon">
+                  <el-icon :size="20" color="#6366f1"><SetUp /></el-icon>
+                </div>
+                <div class="card-title-area">
+                  <div class="title-row">
+                    <h3>{{ skill.name }}</h3>
+                    <el-tag size="small" type="info" class="source-tag">系统</el-tag>
+                  </div>
+                  <p class="card-description">{{ skill.description || '暂无描述' }}</p>
+                </div>
+              </div>
+              <div class="card-footer">
+                <div class="card-meta">
+                  <span class="meta-item">
+                    <el-icon :size="12"><Folder /></el-icon>
+                    {{ skill.dir_name }}
+                  </span>
+                </div>
+                <div class="card-actions" v-if="!batchMode">
+                  <el-tooltip content="系统技能不可删除" placement="top">
+                    <div class="action-icon-btn disabled">
+                      <el-icon :size="14"><Delete /></el-icon>
+                    </div>
+                  </el-tooltip>
+                </div>
               </div>
             </div>
           </div>
         </div>
+      </template>
+
+      <!-- 分割线 -->
+      <div v-if="systemSkills.length > 0 && userSkills.length > 0" class="skill-divider">
+        <div class="divider-line"></div>
       </div>
 
+      <!-- 用户技能 -->
+      <template v-if="userSkills.length > 0">
+        <div class="skill-section-header">
+          <div class="section-icon user-icon">
+            <el-icon :size="16" color="#10b981"><User /></el-icon>
+          </div>
+          <span class="section-title">我的技能</span>
+          <span class="section-count">{{ userSkills.length }} 个</span>
+        </div>
+        <div class="skills-list">
+          <div
+            v-for="skill in userSkills"
+            :key="skill.name"
+            class="skill-card user-skill"
+            :class="{ 'card-selected': selectedNames.includes(skill.name), 'card-selectable': batchMode }"
+            @click="handleCardClick(skill)"
+          >
+            <div class="card-color-bar user-bar"></div>
+            <div class="card-body">
+              <div class="card-header">
+                <div v-if="batchMode" class="card-checkbox" @click.stop="toggleSelect(skill.name)">
+                  <el-checkbox :model-value="selectedNames.includes(skill.name)" />
+                </div>
+                <div class="card-icon user-card-icon">
+                  <el-icon :size="20" color="#10b981"><SetUp /></el-icon>
+                </div>
+                <div class="card-title-area">
+                  <div class="title-row">
+                    <h3>{{ skill.name }}</h3>
+                    <el-tag size="small" type="success" class="source-tag">自定义</el-tag>
+                  </div>
+                  <p class="card-description">{{ skill.description || '暂无描述' }}</p>
+                </div>
+              </div>
+              <div class="card-footer">
+                <div class="card-meta">
+                  <span class="meta-item">
+                    <el-icon :size="12"><Folder /></el-icon>
+                    {{ skill.dir_name }}
+                  </span>
+                </div>
+                <div class="card-actions" v-if="!batchMode">
+                  <div class="action-icon-btn danger" @click="handleDelete(skill.name)">
+                    <el-icon :size="14"><Delete /></el-icon>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- 空状态 -->
       <div v-if="!loading && skillList.length === 0 && searchKeyword.trim()" class="empty-state">
         <div class="empty-icon">🔍</div>
         <p class="empty-title">未找到匹配的技能</p>
@@ -187,7 +262,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, Upload, Search, SetUp, Folder, Select } from '@element-plus/icons-vue'
+import { Plus, Delete, Upload, Search, SetUp, Folder, Select, Monitor, User } from '@element-plus/icons-vue'
 import type { UploadFile as ElUploadFile } from 'element-plus'
 import {
   getSkillList,
@@ -205,6 +280,10 @@ const pageSize = ref(12)
 const searchKeyword = ref('')
 const batchMode = ref(false)
 const selectedNames = ref<string[]>([])
+
+// 按来源分组
+const systemSkills = computed(() => skillList.value.filter(s => s.source === 'system'))
+const userSkills = computed(() => skillList.value.filter(s => s.source === 'user'))
 
 // 添加技能
 const showAddDialog = ref(false)
@@ -224,9 +303,9 @@ const uploadRef = ref()
 // 防抖定时器
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
-// 是否全选
+// 是否全选（仅用户技能可被选中）
 const isAllSelected = computed(() => {
-  return skillList.value.length > 0 && skillList.value.every(s => selectedNames.value.includes(s.name))
+  return userSkills.value.length > 0 && userSkills.value.every(s => selectedNames.value.includes(s.name))
 })
 
 // 输入即搜索（防抖 300ms）
@@ -260,18 +339,18 @@ function toggleSelect(name: string) {
   }
 }
 
-// 全选/取消全选
+// 全选/取消全选（仅用户技能）
 function toggleSelectAll() {
   if (isAllSelected.value) {
     selectedNames.value = []
   } else {
-    selectedNames.value = skillList.value.map(s => s.name)
+    selectedNames.value = userSkills.value.map(s => s.name)
   }
 }
 
-// 卡片点击：批量模式下切换选中
+// 卡片点击：批量模式下切换选中（系统技能不可选）
 function handleCardClick(skill: SkillInfo) {
-  if (batchMode.value) {
+  if (batchMode.value && skill.source !== 'system') {
     toggleSelect(skill.name)
   }
 }

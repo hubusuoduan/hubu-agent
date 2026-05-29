@@ -1,203 +1,314 @@
-"""系统配置服务 - 支持前端动态修改部分配置
+"""系统配置服务 - 用户级配置工厂模式
 
-读取优先级：Redis 覆盖值 > .env 默认值
-业务代码通过 settings.XXX 访问时自动走动态覆盖（由 Settings.__getattribute__ 实现）
+核心类 SettingsFactory：请求开始时 create_for_user() 一次性加载，请求过程中 get() 同步取值
+默认值唯一来源：CONFIGURABLE_FIELDS 中的 default 字段，不再从 .env 读取
 """
+import json
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from app.config import settings
-from app.services.redis_client import RedisClient
+from app.database.dao.user_setting_dao import UserSettingDao
 
 
-# 可配置字段的元信息定义
+# 可配置字段的元信息定义（default 为唯一默认值来源，不再从 .env 读取）
 CONFIGURABLE_FIELDS: Dict[str, Dict[str, Any]] = {
     # ── 对话历史 ──
     "MAX_HISTORY_ROUNDS": {
-        "type": "int", "min": 1, "max": 50,
+        "type": "int", "default": 10, "min": 1, "max": 50,
         "group": "对话历史", "desc": "最大保留对话轮数"
     },
     "ENABLE_HISTORY_SUMMARY": {
-        "type": "bool",
+        "type": "bool", "default": True,
         "group": "对话历史", "desc": "是否启用历史摘要"
     },
     "SUMMARY_THRESHOLD": {
-        "type": "int", "min": 5, "max": 100,
+        "type": "int", "default": 20, "min": 5, "max": 100,
         "group": "对话历史", "desc": "触发摘要的消息条数阈值"
     },
 
     # ── 上下文控制 ──
     "MAX_CONTEXT_TOKENS": {
-        "type": "int", "min": 1000, "max": 128000,
+        "type": "int", "default": 8000, "min": 1000, "max": 128000,
         "group": "上下文控制", "desc": "最大上下文token数"
     },
     "RESERVE_FOR_RESPONSE": {
-        "type": "int", "min": 500, "max": 8000,
+        "type": "int", "default": 2000, "min": 500, "max": 8000,
         "group": "上下文控制", "desc": "预留响应token数"
     },
     "ENABLE_TOKEN_CONTROL": {
-        "type": "bool",
+        "type": "bool", "default": True,
         "group": "上下文控制", "desc": "是否启用token控制"
     },
     "MERGE_MAX_CONTEXT_LENGTH": {
-        "type": "int", "min": 1000, "max": 128000,
+        "type": "int", "default": 8000, "min": 1000, "max": 128000,
         "group": "上下文控制", "desc": "综合处理节点合并后上下文最大字符数"
     },
 
     # ── RAG检索 ──
     "RAG_TOP_K": {
-        "type": "int", "min": 1, "max": 30,
+        "type": "int", "default": 8, "min": 1, "max": 30,
         "group": "RAG检索", "desc": "每个知识库检索的文档数量"
     },
     "RAG_MIN_SCORE": {
-        "type": "float", "min": 0.0, "max": 1.0,
+        "type": "float", "default": 0.2, "min": 0.0, "max": 1.0,
         "group": "RAG检索", "desc": "最小分数阈值"
     },
     "RAG_RERANKER_TOP_N": {
-        "type": "int", "min": 1, "max": 30,
+        "type": "int", "default": 15, "min": 1, "max": 30,
         "group": "RAG检索", "desc": "参与重排序的文档数量"
     },
+    "RAG_HYBRID_WEIGHTS": {
+        "type": "str", "default": "0.4,0.6",
+        "group": "RAG检索", "desc": "混合检索权重(BM25权重,语义权重)"
+    },
+    "MILVUS_NPROBE": {
+        "type": "int", "default": 32, "min": 1, "max": 128,
+        "group": "RAG检索", "desc": "向量检索搜索的聚类中心数量"
+    },
 
+    # ── 长期记忆 ──
+    "MEMORY_TOP_K": {
+        "type": "int", "default": 5, "min": 1, "max": 20,
+        "group": "长期记忆", "desc": "记忆检索返回的最大数量"
+    },
+    "MEMORY_MIN_SCORE": {
+        "type": "float", "default": 0.3, "min": 0.0, "max": 1.0,
+        "group": "长期记忆", "desc": "记忆检索最低相似度阈值"
+    },
+
+    # ── Agent ──
+    "AGENT_MAX_ITERATIONS": {
+        "type": "int", "default": 10, "min": 1, "max": 50,
+        "group": "Agent", "desc": "Agent最大工具调用轮数，防止死循环"
+    },
+    "REVIEWER_MAX_RETRIES": {
+        "type": "int", "default": 3, "min": 1, "max": 10,
+        "group": "Agent", "desc": "Reviewer最大重试次数，防止死循环"
+    },
+
+    # ── 代码执行 ──
+    "CODE_EXEC_TIMEOUT": {
+        "type": "int", "default": 60, "min": 10, "max": 600,
+        "group": "代码执行", "desc": "代码执行默认超时（秒）"
+    },
+    "CODE_EXEC_MAX_TIMEOUT": {
+        "type": "int", "default": 300, "min": 60, "max": 600,
+        "group": "代码执行", "desc": "代码执行最大超时（秒）"
+    },
+
+    # ── LLM ──
+    "LLM_STREAM_CHUNK_TIMEOUT": {
+        "type": "int", "default": 300, "min": 0, "max": 600,
+        "group": "LLM", "desc": "流式chunk超时（秒），thinking模型需调大，0为禁用"
+    },
 }
 
 
-def _cast_value(raw: str, field_type: str) -> Any:
-    """将 Redis 中存储的字符串转换为对应类型"""
-    if field_type == "int":
-        return int(raw)
-    elif field_type == "float":
-        return float(raw)
-    elif field_type == "bool":
-        return raw.lower() in ("true", "1", "yes")
-    return raw
+def _get_default(key: str) -> Any:
+    """从 CONFIGURABLE_FIELDS 获取默认值"""
+    return CONFIGURABLE_FIELDS[key]["default"]
 
 
-class SettingsService:
-    """系统配置服务"""
+def _build_default_settings() -> Dict[str, Any]:
+    """构建包含所有默认值的配置字典"""
+    return {key: meta["default"] for key, meta in CONFIGURABLE_FIELDS.items()}
 
-    REDIS_PREFIX = "app_settings:"
 
-    # 进程内缓存，避免每次访问属性都查 Redis
-    _cache: Dict[str, Any] = {}
-    _cache_loaded: bool = False
+def _validate_value(key: str, value: Any) -> Any:
+    """类型转换与范围校验，返回校验后的值"""
+    if key not in CONFIGURABLE_FIELDS:
+        raise ValueError(f"配置项 '{key}' 不允许前端修改")
+
+    field_meta = CONFIGURABLE_FIELDS[key]
+    field_type = field_meta["type"]
+
+    # 类型转换
+    try:
+        if field_type == "int":
+            value = int(value)
+        elif field_type == "float":
+            value = float(value)
+        elif field_type == "bool":
+            if isinstance(value, str):
+                value = value.lower() in ("true", "1", "yes")
+            else:
+                value = bool(value)
+        elif field_type == "str":
+            value = str(value)
+    except (ValueError, TypeError):
+        raise ValueError(f"配置项 '{key}' 的值类型错误，期望 {field_type}")
+
+    # 范围校验
+    if "min" in field_meta and value < field_meta["min"]:
+        raise ValueError(f"配置项 '{key}' 的值不能小于 {field_meta['min']}")
+    if "max" in field_meta and value > field_meta["max"]:
+        raise ValueError(f"配置项 '{key}' 的值不能大于 {field_meta['max']}")
+
+    return value
+
+
+class SettingsFactory:
+    """用户配置工厂 - 请求级生命周期管理
+
+    用法：
+        # 请求开始时（user_id 从 ContextVar 自动获取）
+        await SettingsFactory.create_for_user()
+        # 请求过程中（同步，无需 await）
+        value = SettingsFactory.get(key="MAX_HISTORY_ROUNDS")
+        # 请求结束时
+        SettingsFactory.clear_user()
+    """
+
+    # 用户级配置缓存 {user_id: {key: value}}
+    _user_settings: Dict[int, Dict[str, Any]] = {}
 
     @classmethod
-    def _redis_key(cls, key: str) -> str:
-        return f"{cls.REDIS_PREFIX}{key}"
+    def _get_user_id(cls) -> int:
+        """从 ContextVar 获取 user_id"""
+        from app.middleware.user_context import current_user_id
+        uid = current_user_id.get()
+        if uid:
+            return uid
+        return 0
 
     @classmethod
-    def load_cache(cls):
-        """从 Redis 加载所有覆盖值到进程内缓存（启动时调用一次）"""
-        cls._cache.clear()
-        try:
-            client = RedisClient.get_client()
-            # 用 SCAN 批量获取所有 app_settings:* 的键值
-            cursor = 0
-            while True:
-                cursor, keys = client.scan(cursor, match=f"{cls.REDIS_PREFIX}*", count=100)
-                if keys:
-                    values = client.mget(keys)
-                    for k, v in zip(keys, values):
-                        if v is not None:
-                            short_key = k.decode() if isinstance(k, bytes) else k
-                            short_key = short_key.replace(cls.REDIS_PREFIX, "")
-                            cls._cache[short_key] = v
-                if cursor == 0:
-                    break
-            cls._cache_loaded = True
-            logger.info(f"配置缓存加载完成，共 {len(cls._cache)} 项覆盖值")
-        except Exception as e:
-            logger.warning(f"配置缓存加载失败，将使用默认值: {e}")
-            cls._cache_loaded = True
+    async def create_for_user(cls) -> Dict[str, Any]:
+        """为用户加载配置（请求开始时调用，user_id 从 ContextVar 获取）
+
+        从数据库读取一条 JSON 记录，合并默认值，存入内存缓存。
+        如果数据库无记录，用默认值初始化并写入数据库。
+        """
+        uid = cls._get_user_id()
+        defaults = _build_default_settings()
+
+        # 从数据库读取
+        db_data = await UserSettingDao.get_settings_json(uid)
+
+        if db_data:
+            # 合并：数据库值覆盖默认值，补全新增字段
+            merged = {**defaults, **db_data}
+        else:
+            # 首次访问，用默认值初始化数据库
+            merged = defaults.copy()
+            await UserSettingDao.upsert(uid, json.dumps(merged, ensure_ascii=False))
+            logger.info(f"用户配置首次初始化: user_id={uid}, 共 {len(merged)} 项")
+
+        cls._user_settings[uid] = merged
+        return merged
 
     @classmethod
-    def get_effective_value(cls, key: str) -> Optional[Any]:
-        """获取配置的生效值：进程缓存 > .env默认值"""
-        if key in cls._cache:
-            raw = cls._cache[key]
-            field_type = CONFIGURABLE_FIELDS[key]["type"]
-            return _cast_value(raw, field_type)
-        # 回退到 settings 默认值
-        return object.__getattribute__(settings, key)
+    def get(cls, key: Optional[str] = None) -> Any:
+        """同步获取配置值（请求过程中调用，无需 await，user_id 从 ContextVar 获取）
+
+        从内存缓存直接取值，缓存不存在则返回默认值。
+        """
+        uid = cls._get_user_id()
+        if key is None:
+            # 不传 key，返回全部配置
+            if uid in cls._user_settings:
+                return cls._user_settings[uid].copy()
+            return _build_default_settings()
+
+        if uid in cls._user_settings and key in cls._user_settings[uid]:
+            return cls._user_settings[uid][key]
+        # 兜底：返回字段默认值
+        if key in CONFIGURABLE_FIELDS:
+            return _get_default(key)
+        raise ValueError(f"配置项 '{key}' 不存在")
 
     @classmethod
-    def set_value(cls, key: str, value: Any) -> Dict[str, Any]:
-        """设置配置覆盖值到 Redis + 更新进程缓存"""
-        if key not in CONFIGURABLE_FIELDS:
-            raise ValueError(f"配置项 '{key}' 不允许前端修改")
+    async def set_value(cls, user_id: int, key: str, value: Any) -> Dict[str, Any]:
+        """设置单个配置值（读改写 JSON）"""
+        value = _validate_value(key, value)
 
-        field_meta = CONFIGURABLE_FIELDS[key]
-        field_type = field_meta["type"]
+        # 确保缓存存在
+        if user_id not in cls._user_settings:
+            await cls.create_for_user()
 
-        # 类型转换与校验
-        try:
-            if field_type == "int":
-                value = int(value)
-            elif field_type == "float":
-                value = float(value)
-            elif field_type == "bool":
-                if isinstance(value, str):
-                    value = value.lower() in ("true", "1", "yes")
-                else:
-                    value = bool(value)
-        except (ValueError, TypeError):
-            raise ValueError(f"配置项 '{key}' 的值类型错误，期望 {field_type}")
+        # 更新缓存
+        cls._user_settings[user_id][key] = value
 
-        # 范围校验
-        if "min" in field_meta and value < field_meta["min"]:
-            raise ValueError(f"配置项 '{key}' 的值不能小于 {field_meta['min']}")
-        if "max" in field_meta and value > field_meta["max"]:
-            raise ValueError(f"配置项 '{key}' 的值不能大于 {field_meta['max']}")
+        # 写入数据库
+        await UserSettingDao.upsert(
+            user_id, json.dumps(cls._user_settings[user_id], ensure_ascii=False)
+        )
 
-        # 写入 Redis（不过期）
-        try:
-            RedisClient.set(cls._redis_key(key), str(value), expiration=0)
-        except Exception as e:
-            logger.error(f"Redis写入配置失败 [{key}]: {e}")
-            raise RuntimeError(f"配置保存失败: {e}")
-
-        # 更新进程缓存
-        cls._cache[key] = str(value)
-        logger.info(f"配置已更新: {key} = {value}")
+        logger.info(f"用户配置已更新: user_id={user_id}, {key} = {value}")
         return {"key": key, "value": value}
 
     @classmethod
-    def reset_value(cls, key: str) -> bool:
-        """重置单个配置为默认值（删除Redis覆盖 + 清除缓存）"""
+    async def reset_value(cls, user_id: int, key: str) -> bool:
+        """重置单个配置为默认值"""
         if key not in CONFIGURABLE_FIELDS:
             raise ValueError(f"配置项 '{key}' 不允许前端修改")
 
-        try:
-            RedisClient.delete(cls._redis_key(key))
-            cls._cache.pop(key, None)
-            logger.info(f"配置已重置: {key}")
-            return True
-        except Exception as e:
-            logger.error(f"Redis删除配置失败 [{key}]: {e}")
-            raise RuntimeError(f"配置重置失败: {e}")
+        default_value = _get_default(key)
+
+        # 更新缓存
+        if user_id not in cls._user_settings:
+            await cls.create_for_user()
+        cls._user_settings[user_id][key] = default_value
+
+        # 写入数据库
+        await UserSettingDao.upsert(
+            user_id, json.dumps(cls._user_settings[user_id], ensure_ascii=False)
+        )
+
+        logger.info(f"用户配置已重置: user_id={user_id}, {key}")
+        return True
 
     @classmethod
-    def reset_all(cls) -> int:
-        """重置所有配置为默认值"""
-        count = 0
-        for key in list(cls._cache.keys()):
-            try:
-                RedisClient.delete(cls._redis_key(key))
-                count += 1
-            except Exception as e:
-                logger.error(f"重置配置失败 [{key}]: {e}")
-        cls._cache.clear()
-        logger.info(f"已重置 {count} 项配置")
-        return count
+    async def reset_all(cls, user_id: int) -> int:
+        """重置用户所有配置为默认值"""
+        defaults = _build_default_settings()
+        cls._user_settings[user_id] = defaults.copy()
+
+        # 写入数据库
+        await UserSettingDao.upsert(
+            user_id, json.dumps(defaults, ensure_ascii=False)
+        )
+
+        logger.info(f"用户配置已全部重置: user_id={user_id}, 共 {len(defaults)} 项")
+        return len(defaults)
 
     @classmethod
-    def get_all_settings(cls) -> List[Dict[str, Any]]:
-        """获取所有可配置项（含当前值、默认值、元信息）"""
+    def clear_user(cls):
+        """清除用户的配置缓存（请求结束时调用，user_id 从 ContextVar 获取）"""
+        uid = cls._get_user_id()
+        if uid in cls._user_settings:
+            del cls._user_settings[uid]
+            logger.debug(f"已清除用户 {uid} 的配置缓存")
+
+    @classmethod
+    def clear_all(cls):
+        """清除所有缓存"""
+        cls._user_settings.clear()
+        logger.debug("已清除所有用户配置缓存")
+
+
+class SettingsService:
+    """系统配置服务 - 用户配置的 CRUD 操作（供 API 层调用）"""
+
+    @classmethod
+    async def init_user_settings(cls, user_id: int):
+        """初始化用户默认配置（注册时调用，将所有默认值写入数据库）"""
+        defaults = _build_default_settings()
+        await UserSettingDao.upsert(user_id, json.dumps(defaults, ensure_ascii=False))
+        logger.info(f"用户默认配置初始化完成: user_id={user_id}, 共 {len(defaults)} 项")
+
+    @classmethod
+    async def get_user_all_settings(cls, user_id: int) -> List[Dict[str, Any]]:
+        """获取用户的所有配置项（含元信息，供前端展示）"""
+        # 确保缓存已加载（ContextVar 已由中间件设置，create_for_user 自动获取）
+        if user_id not in SettingsFactory._user_settings:
+            await SettingsFactory.create_for_user()
+
+        user_data = SettingsFactory._user_settings[user_id]
         result = []
         for key, meta in CONFIGURABLE_FIELDS.items():
-            default_value = object.__getattribute__(settings, key)
-            current_value = cls.get_effective_value(key)
+            default_value = meta["default"]
+            current_value = user_data.get(key, default_value)
             is_modified = (current_value != default_value)
 
             result.append({
@@ -214,9 +325,9 @@ class SettingsService:
         return result
 
     @classmethod
-    def get_settings_grouped(cls) -> Dict[str, List[Dict[str, Any]]]:
-        """获取按分组的配置项"""
-        all_settings = cls.get_all_settings()
+    async def get_user_settings_grouped(cls, user_id: int) -> Dict[str, List[Dict[str, Any]]]:
+        """获取按分组的用户配置项"""
+        all_settings = await cls.get_user_all_settings(user_id)
         grouped: Dict[str, List[Dict[str, Any]]] = {}
         for item in all_settings:
             group = item["group"]
@@ -224,3 +335,22 @@ class SettingsService:
                 grouped[group] = []
             grouped[group].append(item)
         return grouped
+
+    @classmethod
+    async def set_user_value(cls, user_id: int, key: str, value: Any) -> Dict[str, Any]:
+        """设置用户级配置值"""
+        return await SettingsFactory.set_value(user_id, key, value)
+
+    @classmethod
+    async def reset_user_value(cls, user_id: int, key: str) -> bool:
+        """重置用户某个配置为默认值"""
+        return await SettingsFactory.reset_value(user_id, key)
+
+    @classmethod
+    async def reset_user_all(cls, user_id: int) -> int:
+        """重置用户所有配置为默认值"""
+        return await SettingsFactory.reset_all(user_id)
+
+
+# 兼容旧代码的别名（后续逐步替换后可删除）
+UserConfig = SettingsFactory

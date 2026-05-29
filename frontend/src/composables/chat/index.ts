@@ -63,6 +63,7 @@ export function useChat() {
     clearChat: stream.clearChat,
     loadDialogHistory: stream.loadDialogHistory,
     stopGeneration: stream.stopGeneration,
+    saveInProgressMessage: stream.saveInProgressMessage,
     handleLogout: stream.handleLogout,
 
     // 组合方法
@@ -71,7 +72,6 @@ export function useChat() {
 
     // 模型
     modelList: models.modelList,
-    currentModelId: models.currentModelId,
     loadModels: models.loadModels,
     handleSwitchModel: models.handleSwitchModel,
 
@@ -79,6 +79,7 @@ export function useChat() {
     showWorkflowPanel: workflow.showWorkflowPanel,
     nodeTraces: workflow.nodeTraces,
     workflowTotalMs: workflow.workflowTotalMs,
+    userAgentNodes: workflow.userAgentNodes,
 
     // 文件
     uploadedFiles: files.uploadedFiles,

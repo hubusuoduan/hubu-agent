@@ -1,7 +1,7 @@
 """综合处理节点 - 合并 RAG 检索结果与长期记忆，格式化输出"""
 from loguru import logger
 
-from app.config import settings
+from app.services.settings_service import SettingsFactory
 from app.core.graph.state import ChatState
 
 NL = chr(10)  # 换行符常量，避免转义问题
@@ -57,7 +57,7 @@ async def merge_node(state: ChatState) -> dict:
         merged_context = (NL + NL).join(parts)
 
         # 长度控制：超过阈值时截断知识库部分，优先保留记忆
-        MAX_CONTEXT_LENGTH = settings.MERGE_MAX_CONTEXT_LENGTH
+        MAX_CONTEXT_LENGTH = SettingsFactory.get(key="MERGE_MAX_CONTEXT_LENGTH")
         if len(merged_context) > MAX_CONTEXT_LENGTH:
             memory_part = "【用户长期记忆】" + NL + memory_context
             remaining = MAX_CONTEXT_LENGTH - len(memory_part) - 50  # 留分隔符空间

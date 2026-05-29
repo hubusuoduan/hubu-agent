@@ -4,6 +4,8 @@ from typing import Optional
 
 from app.api.dependencies import get_current_user
 from app.database.models.user import User
+from app.database.session import get_async_session
+from sqlmodel.ext.asyncio.session import AsyncSession
 from app.services.memory_service import get_memory_service
 from app.schemas.memory import (
     MemoryResponse,
@@ -21,15 +23,20 @@ async def list_memories(
     page_size: int = 20,
     keyword: Optional[str] = None,
     memory_type: Optional[str] = None,
-    current_user: User = Depends(get_current_user)
+    user_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session)
 ):
-    """获取当前用户的长期记忆（支持分页和搜索）
+    """获取长期记忆列表（支持分页和搜索）
+
+    所有用户只能查看自己的记忆。
 
     Args:
         page: 页码，从1开始
         page_size: 每页数量
         keyword: 搜索关键词
         memory_type: 按类型筛选（preference/fact/insight）
+        user_id: 保留参数（暂未使用）
     """
     if page < 1:
         page = 1
@@ -38,26 +45,29 @@ async def list_memories(
 
     offset = (page - 1) * page_size
 
+    # 所有用户只能查看自己的记忆
+    query_user_id = current_user.id
+
     memory_service = get_memory_service()
     result = await memory_service.list_memories(
-        user_id=current_user.id,
+        user_id=query_user_id,
         limit=page_size,
         offset=offset,
         keyword=keyword or "",
         memory_type=memory_type or ""
     )
 
-    items = [
-        MemoryResponse(
+    items = []
+    for m in result.get("items", []):
+        items.append(MemoryResponse(
             memory_id=m.get("memory_id", ""),
+            user_id=m.get("user_id"),
             content=m.get("content", ""),
             memory_type=m.get("memory_type", "fact"),
             source_dialog_id=m.get("source_dialog_id", ""),
             created_at=m.get("created_at"),
             importance=m.get("importance", 3)
-        )
-        for m in result.get("items", [])
-    ]
+        ))
 
     return MemoryListResponse(total=result.get("total", 0), items=items)
 
@@ -106,6 +116,13 @@ async def update_memory(
         raise HTTPException(status_code=400, detail="记忆类型必须是 preference/fact/insight")
 
     memory_service = get_memory_service()
+
+    # 校验记忆归属
+    result = await memory_service.list_memories(user_id=current_user.id, limit=200, offset=0)
+    owned_ids = {m.get("memory_id") for m in result.get("items", [])}
+    if memory_id not in owned_ids:
+        raise HTTPException(status_code=403, detail="无权操作该记忆")
+
     success = await memory_service.update_memory(
         memory_id=memory_id,
         content=data.content,
@@ -125,6 +142,7 @@ async def update_memory(
 
     return MemoryResponse(
         memory_id=updated.get("memory_id", ""),
+        user_id=updated.get("user_id"),
         content=updated.get("content", ""),
         memory_type=updated.get("memory_type", "fact"),
         source_dialog_id=updated.get("source_dialog_id", ""),
@@ -140,6 +158,13 @@ async def delete_memory(
 ):
     """删除一条长期记忆"""
     memory_service = get_memory_service()
+
+    # 校验记忆归属
+    result = await memory_service.list_memories(user_id=current_user.id, limit=200, offset=0)
+    owned_ids = {m.get("memory_id") for m in result.get("items", [])}
+    if memory_id not in owned_ids:
+        raise HTTPException(status_code=403, detail="无权操作该记忆")
+
     success = await memory_service.delete_memory(memory_id)
 
     if not success:

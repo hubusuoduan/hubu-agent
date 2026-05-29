@@ -3,7 +3,7 @@ from loguru import logger
 
 from app.core.graph.state import ChatState
 from app.services.memory_service import get_memory_service
-from app.config import settings
+from app.services.settings_service import SettingsFactory
 
 
 async def memory_node(state: ChatState) -> dict:
@@ -20,7 +20,10 @@ async def memory_node(state: ChatState) -> dict:
     """
     try:
         user_input = state.get("user_input", "")
-        user_id = state.get("user_id", "")
+
+        # 从 ContextVar 获取 user_id
+        from app.middleware.user_context import current_user_id
+        user_id = current_user_id.get()
 
         # 如果没有 user_id，跳过记忆检索
         if not user_id:
@@ -28,12 +31,14 @@ async def memory_node(state: ChatState) -> dict:
             return {"memory_context": None}
 
         # 检索相关记忆
+        memory_top_k = SettingsFactory.get(key="MEMORY_TOP_K")
+        memory_min_score = SettingsFactory.get(key="MEMORY_MIN_SCORE")
         memory_service = get_memory_service()
         memories = await memory_service.search_memories(
-            user_id=user_id,
+            user_id=str(user_id),
             query=user_input,
-            top_k=settings.MEMORY_TOP_K,
-            min_score=settings.MEMORY_MIN_SCORE
+            top_k=memory_top_k,
+            min_score=memory_min_score
         )
 
         if not memories:

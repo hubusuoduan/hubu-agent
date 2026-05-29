@@ -39,7 +39,9 @@ class HybridReranker:
             return []
         
         # 解析混合权重配置
-        weights = [float(w) for w in settings.RAG_HYBRID_WEIGHTS.split(",")]
+        from app.services.settings_service import SettingsFactory
+        hybrid_weights = SettingsFactory.get(key="RAG_HYBRID_WEIGHTS")
+        weights = [float(w) for w in hybrid_weights.split(",")]
         bm25_weight = weights[0]
         semantic_weight = weights[1]
         

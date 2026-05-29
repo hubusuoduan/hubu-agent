@@ -31,7 +31,20 @@ class UserInfo(BaseModel):
     email: Optional[str] = None
     nickname: Optional[str] = None
     avatar: Optional[str] = None
+    role: int = Field(default=0, description="用户角色: 0=普通用户, 1=管理员")
     is_active: bool
+
+
+class UpdateProfile(BaseModel):
+    """更新个人信息请求"""
+    email: Optional[EmailStr] = Field(default=None, description="新邮箱")
+    nickname: Optional[str] = Field(default=None, max_length=50, description="新昵称")
+
+
+class ChangePassword(BaseModel):
+    """修改密码请求"""
+    old_password: str = Field(min_length=6, max_length=128, description="旧密码")
+    new_password: str = Field(min_length=6, max_length=128, description="新密码")
 
 
 class RefreshTokenRequest(BaseModel):

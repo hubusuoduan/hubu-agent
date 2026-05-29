@@ -10,6 +10,9 @@ import LoginPage from '../pages/LoginPage.vue'
 import RegisterPage from '../pages/RegisterPage.vue'
 import WorkspacePage from '../pages/WorkspacePage.vue'
 import LogsPage from '../pages/LogsPage.vue'
+import ProfilePage from '../pages/ProfilePage.vue'
+import UserAgentPage from '../pages/UserAgentPage.vue'
+import ProviderPage from '../pages/ProviderPage.vue'
 
 const routes = [
   {
@@ -53,6 +56,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/user-agent',
+    name: 'UserAgent',
+    component: UserAgentPage,
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/skills',
     name: 'Skills',
     component: SkillsPage,
@@ -81,6 +90,18 @@ const routes = [
     name: 'Logs',
     component: LogsPage,
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/provider',
+    name: 'Provider',
+    component: ProviderPage,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/profile',
+    name: 'Profile',
+    component: ProfilePage,
+    meta: { requiresAuth: true }
   }
 ]
 
@@ -95,6 +116,9 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth && !token) {
     next('/login')
   } else if ((to.path === '/login' || to.path === '/register') && token) {
+    next('/')
+  } else if (to.path === '/logs' && localStorage.getItem('user_role') !== '1') {
+    // 非管理员不能访问日志页面
     next('/')
   } else {
     next()

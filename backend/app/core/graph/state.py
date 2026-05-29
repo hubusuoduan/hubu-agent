@@ -2,6 +2,16 @@
 from typing import List, Optional, Annotated
 from typing_extensions import TypedDict
 from langgraph.graph.message import add_messages
+from operator import add
+
+
+def _append_list(existing: list, new: list) -> list:
+    """列表追加合并函数，用于 agent_scratchpad 的 reducer"""
+    if existing is None:
+        existing = []
+    if new is None:
+        new = []
+    return existing + new
 
 
 class ChatState(TypedDict):
@@ -12,10 +22,16 @@ class ChatState(TypedDict):
         user_input: 用户当前输入
         rag_context: RAG 检索的上下文信息（由 rag 节点写入）
         memory_context: 长期记忆的上下文信息（由 memory 节点写入）
-        context: 综合处理后的最终上下文（由 merge 节点写入，供 chat_agent 使用）
+        context: 综合处理后的最终上下文（由 merge 节点写入，供各 Agent 使用）
         session_id: 会话ID
         user_id: 用户ID
         response: AI 的最终回复
+        next_agent: Supervisor 路由决策，决定下一个执行的 Agent
+        review_result: Reviewer 审查结果 ("pass" / "retry")
+        review_feedback: Reviewer 审查反馈（不够时说明缺什么）
+        retry_count: 当前重试次数（防止死循环）
+        agent_scratchpad: 各 Agent 的执行记录列表，格式: [{"agent": "researcher", "output": "..."}]
+        user_agents_desc: 用户自建 Agent 描述列表，格式: [{"name": "user_translator", "display_name": "翻译官", "description": "..."}]
     """
     messages: Annotated[list, add_messages]
     user_input: str
@@ -25,3 +41,10 @@ class ChatState(TypedDict):
     session_id: str
     user_id: str
     response: str
+    next_agent: str
+    review_result: str
+    review_feedback: str
+    retry_count: int
+    agent_scratchpad: Annotated[list, _append_list]
+    user_agents_desc: list
+

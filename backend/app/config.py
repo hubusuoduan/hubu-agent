@@ -1,5 +1,4 @@
-import json
-from typing import List, Optional
+from typing import Optional
 from pydantic_settings import BaseSettings
 from pathlib import Path
 from loguru import logger
@@ -36,56 +35,12 @@ class Settings(BaseSettings):
     REDIS_DB: int = 0
     REDIS_PASSWORD: str = ""
 
-    # LLM配置
-    LLM_API_KEY: str = ""
-    LLM_BASE_URL: str = "https://api.openai.com/v1"
-    LLM_MODEL: str = "gpt-3.5-turbo"
-    LLM_STREAM_CHUNK_TIMEOUT: int = 300  # 流式输出chunk超时（秒），thinking模型需调大
+    # LLM配置已迁移至数据库 llm_provider 表，通过 /provider API 管理
 
-    # 多模型Provider配置（JSON字符串）
-    LLM_PROVIDERS: str = "[]"
+    # 对话历史、上下文控制、RAG、记忆、Agent、代码执行等配置
+    # 已移至 CONFIGURABLE_FIELDS（settings_service.py），默认值唯一来源
 
-    @property
-    def model_providers(self) -> List[dict]:
-        """解析多模型Provider配置"""
-        try:
-            providers = json.loads(self.LLM_PROVIDERS)
-            if isinstance(providers, list) and len(providers) > 0:
-                return providers
-        except (json.JSONDecodeError, TypeError):
-            pass
-        # 兜底：用旧的单模型配置生成一个默认Provider
-        return [{
-            "id": "default",
-            "name": self.LLM_MODEL,
-            "api_key": self.LLM_API_KEY,
-            "base_url": self.LLM_BASE_URL,
-            "model": self.LLM_MODEL,
-            "is_default": True
-        }]
-
-    @property
-    def default_provider_id(self) -> str:
-        """获取默认Provider的ID"""
-        for p in self.model_providers:
-            if p.get("is_default"):
-                return p["id"]
-        return self.model_providers[0]["id"] if self.model_providers else "default"
-
-    # 对话历史管理配置
-    MAX_HISTORY_ROUNDS: int = 10  # 最大保留对话轮数
-    ENABLE_HISTORY_SUMMARY: bool = True  # 是否启用历史摘要
-    SUMMARY_THRESHOLD: int = 20  # 触发摘要的消息条数阈值
-
-    # 上下文长度控制配置
-    MAX_CONTEXT_TOKENS: int = 8000  # 最大上下文token数
-    RESERVE_FOR_RESPONSE: int = 2000  # 预留响应token数
-    ENABLE_TOKEN_CONTROL: bool = True  # 是否启用token控制
-    MERGE_MAX_CONTEXT_LENGTH: int = 8000  # 综合处理节点合并后上下文最大字符数
-
-    # Embedding配置
-    EMBEDDING_API_KEY: str = ""
-    EMBEDDING_MODEL: str = "text-embedding-v3"
+    # Embedding配置已迁移至数据库 embedding_provider 表，通过 /embedding-provider API 管理
 
     # Milvus配置
     MILVUS_HOST: str = "localhost"
@@ -93,46 +48,54 @@ class Settings(BaseSettings):
     MILVUS_USER: str = ""
     MILVUS_PASSWORD: str = ""
     EMBEDDING_DIMENSION: int = 1024
-    MILVUS_NPROBE: int = 32  # 向量检索时搜索的聚类中心数量
-
-    # RAG检索配置
-    RAG_TOP_K: int = 8  # 每个知识库检索的文档数量
-    RAG_MIN_SCORE: float = 0.2  # 最小分数阈值
-    RAG_RERANKER_TOP_N: int = 15  # 参与重排序的文档数量
-    RAG_HYBRID_WEIGHTS: str = "0.4,0.6"  # BM25权重,语义权重(逗号分隔)
-
-    # 长期记忆配置
-    MEMORY_TOP_K: int = 5  # 记忆检索返回的最大数量
-    MEMORY_MIN_SCORE: float = 0.3  # 记忆检索最低相似度阈值
-
-    # Agent配置
-    AGENT_MAX_ITERATIONS: int = 10  # Agent最大工具调用轮数，防止死循环
 
     # 工具配置
     WEATHER_API_KEY: str = ""  # 高德天气API Key
     WEATHER_API_ENDPOINT: str = "https://restapi.amap.com/v3/weather/weatherInfo"
     TAVILY_API_KEY: str = ""  # Tavily搜索API Key
 
-    # 沙箱代码执行器配置（code_runner）
-    SANDBOX_TIMEOUT: int = 30  # 默认超时（秒）
-    SANDBOX_MAX_TIMEOUT: int = 120  # 最大超时（秒）
-    SANDBOX_MAX_OUTPUT: int = 5000  # 最大输出字符数
-
-    # 完整代码执行器配置（code_exec）
-    CODE_EXEC_TIMEOUT: int = 60  # 默认超时（秒）
-    CODE_EXEC_MAX_TIMEOUT: int = 300  # 最大超时（秒）
+    # 代码执行器配置（code_exec）
     CODE_EXEC_MAX_OUTPUT: int = 10000  # 最大输出字符数
 
     # 文件管理器配置（file_manager）
-
     FILE_MAX_SIZE: int = 52428800  # 单文件最大字节数（50MB）
 
+    def file_workspace_path(self, user_id: int | str | None = None) -> Path:
+        """获取文件工作区的绝对路径
+
+        Args:
+            user_id: 用户ID，传入时返回 backend/output/{user_id}，不传返回 backend/output
+
+        每个用户的文件存储在独立子目录中，避免互相干扰。
+        """
+        base = BACKEND_DIR / "output"
+        base.mkdir(parents=True, exist_ok=True)
+        if user_id is not None:
+            p = base / str(user_id)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        return base
+
     @property
-    def file_workspace_path(self) -> Path:
-        """获取文件工作区的绝对路径（固定为 backend/output）"""
-        p = BACKEND_DIR / "output"
-        p.mkdir(parents=True, exist_ok=True)
+    def skills_base_path(self) -> Path:
+        """获取系统 Skills 根目录的绝对路径（app/skills）"""
+        p = BACKEND_DIR / "app" / "skills"
         return p
+
+    def skills_path(self, user_id: int | str | None = None) -> Path:
+        """获取用户 Skills 目录的绝对路径
+
+        Args:
+            user_id: 用户ID，传入时返回 skills/{user_id}，不传返回系统 skills 目录
+
+        每个用户的自定义 Skill 存储在独立子目录中，系统 Skill 在 app/skills 下。
+        用户目录下没有的 Skill 会 fallback 到系统目录。
+        """
+        if user_id is not None:
+            p = BACKEND_DIR / "skills" / str(user_id)
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        return self.skills_base_path
 
     # 包安装器配置（package_installer）
     PKG_ALLOW_PIP: bool = True  # 是否允许 pip install
@@ -163,38 +126,6 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
         case_sensitive = True
 
-    def __getattribute__(self, name: str):
-        """动态属性访问：对可配置字段自动走 Redis 覆盖层"""
-        # 先获取字段默认值
-        value = super().__getattribute__(name)
-
-        # 只对可配置字段做动态覆盖（避免递归和性能开销）
-        if name in _CONFIGURABLE_FIELD_NAMES:
-            try:
-                from app.services.settings_service import SettingsService
-                effective = SettingsService.get_effective_value(name)
-                if effective is not None:
-                    return effective
-            except Exception:
-                pass
-
-        return value
-
-
-# 可配置字段名称集合（用于 __getattribute__ 快速判断）
-# 延迟初始化，避免循环导入
-_CONFIGURABLE_FIELD_NAMES: set = set()
-
-
-def _init_configurable_fields():
-    """初始化可配置字段名称集合（启动时调用）"""
-    global _CONFIGURABLE_FIELD_NAMES
-    try:
-        from app.services.settings_service import CONFIGURABLE_FIELDS
-        _CONFIGURABLE_FIELD_NAMES = set(CONFIGURABLE_FIELDS.keys())
-    except Exception:
-        pass
-
 
 # 创建全局配置实例
 settings = Settings()
@@ -203,18 +134,3 @@ settings = Settings()
 def get_settings() -> Settings:
     """获取配置实例"""
     return settings
-
-
-def init_dynamic_settings():
-    """初始化动态配置系统（应用启动时调用）
-
-    1. 加载可配置字段名称集合
-    2. 从 Redis 加载覆盖值到进程缓存
-    """
-    _init_configurable_fields()
-    try:
-        from app.services.settings_service import SettingsService
-        SettingsService.load_cache()
-        logger.info(f"动态配置系统初始化完成，共 {len(_CONFIGURABLE_FIELD_NAMES)} 个可配置字段")
-    except Exception as e:
-        logger.warning(f"动态配置系统初始化失败，将使用默认值: {e}")

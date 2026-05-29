@@ -72,6 +72,16 @@ async function handleLogin() {
     const response = await request.post('/auth/login', loginForm.value)
     localStorage.setItem('access_token', response.access_token)
     localStorage.setItem('refresh_token', response.refresh_token)
+    // 获取用户信息，存储角色
+    try {
+      const userInfo = await request.get('/auth/me')
+      const role = String(userInfo.role || 0)
+      localStorage.setItem('user_role', role)
+      ;(window as any).__updateUserRole?.(role)
+    } catch {
+      localStorage.setItem('user_role', '0')
+      ;(window as any).__updateUserRole?.('0')
+    }
     ElMessage.success('登录成功')
     router.push('/')
   } catch (error: any) {

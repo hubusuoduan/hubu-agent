@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from loguru import logger
 
 from app.config import settings
@@ -25,12 +26,8 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"数据库表初始化失败: {e}")
 
-    # 初始化动态配置系统
-    try:
-        from app.config import init_dynamic_settings
-        init_dynamic_settings()
-    except Exception as e:
-        logger.error(f"动态配置系统初始化失败: {e}")
+
+
     
     yield
     
@@ -55,6 +52,28 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
+    # 请求结束后清理用户配置缓存
+    class SettingsCleanupMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            response = await call_next(request)
+            try:
+                from app.services.settings_service import SettingsFactory
+                SettingsFactory.clear_user()
+            except Exception:
+                pass
+            try:
+                from app.services.llm_service import LLMService
+                LLMService.clear_user()
+            except Exception:
+                pass
+            return response
+
+    app.add_middleware(SettingsCleanupMiddleware)
+
+    # 用户上下文中间件：统一解析 Token 存入 ContextVar
+    from app.middleware.user_context import UserContextMiddleware
+    app.add_middleware(UserContextMiddleware)
+
     # 注册路由
     from app.api.v1.router import router as api_router
     app.include_router(api_router, prefix="/api/v1")
@@ -77,5 +96,6 @@ if __name__ == "__main__":
         "app.main:app",
         host=settings.HOST,
         port=settings.PORT,
-        reload=True
+        reload=True,
+        reload_dirs=["app"],
     )

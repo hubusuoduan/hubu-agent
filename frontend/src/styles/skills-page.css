@@ -134,12 +134,68 @@
   height: auto;
 }
 
+/* ========== 技能列表容器 ========== */
+.skills-list-wrapper {
+  min-height: 200px;
+}
+
+/* ========== 分组标题 ========== */
+.skill-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  margin-top: 8px;
+}
+
+.skill-section-header:first-child {
+  margin-top: 0;
+}
+
+.section-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.section-icon.system-icon {
+  background: #eef2ff;
+}
+
+.section-icon.user-icon {
+  background: #ecfdf5;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.section-count {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-left: 2px;
+}
+
+/* ========== 分割线 ========== */
+.skill-divider {
+  margin: 24px 0 20px;
+}
+
+.divider-line {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #d1d5db 20%, #d1d5db 80%, transparent);
+}
+
 /* ========== 技能列表 ========== */
 .skills-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: 16px;
-  min-height: 200px;
 }
 
 .skill-card {
@@ -159,7 +215,14 @@
 .card-color-bar {
   width: 4px;
   flex-shrink: 0;
+}
+
+.card-color-bar.system-bar {
   background: linear-gradient(180deg, #6366f1, #8b5cf6);
+}
+
+.card-color-bar.user-bar {
+  background: linear-gradient(180deg, #10b981, #34d399);
 }
 
 .card-body {
@@ -185,19 +248,37 @@
   flex-shrink: 0;
 }
 
+.card-icon.system-card-icon {
+  background: #eef2ff;
+}
+
+.card-icon.user-card-icon {
+  background: #ecfdf5;
+}
+
 .card-title-area {
   flex: 1;
   min-width: 0;
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .card-title-area h3 {
-  margin: 0 0 4px 0;
+  margin: 0;
   font-size: 15px;
   color: #1f2937;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.source-tag {
+  flex-shrink: 0;
 }
 
 .card-description {
@@ -266,6 +347,28 @@
 .action-icon-btn.danger:hover {
   background: rgba(239, 68, 68, 0.08);
   color: #ef4444;
+}
+
+.action-icon-btn.disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.action-icon-btn.disabled:hover {
+  background: transparent;
+  color: #9ca3af;
+}
+
+/* 批量模式下系统技能不可选 */
+.skill-card.card-disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.skill-card.card-disabled:hover {
+  border-color: #e5e7eb;
+  box-shadow: none;
+  transform: none;
 }
 
 /* ========== 空状态 ========== */

@@ -1,32 +1,15 @@
 """对话历史管理节点"""
-from typing import Optional
 from loguru import logger
-from langgraph.types import StreamWriter
 
 from app.core.graph.state import ChatState
-from app.core.agents.summary_agent import SummaryAgent
+from app.core.agents.llm import SummaryAgent
 from app.utils.token_counter import TokenCounter
-from app.services.llm_service import LLMService
-from app.config import settings
-
-
-# 全局 SummaryAgent 单例（无状态，无需按 session_id 缓存）
-_summary_agent: Optional[SummaryAgent] = None
-
-
-def get_summary_agent() -> SummaryAgent:
-    """获取全局 SummaryAgent 实例（单例模式）"""
-    global _summary_agent
-    if _summary_agent is None:
-        model = LLMService.get_model()
-        _summary_agent = SummaryAgent(model=model)
-        logger.info("创建全局 SummaryAgent 实例")
-    return _summary_agent
+from app.utils.message import lc_messages_to_dicts, dicts_to_lc_messages
+from app.services.settings_service import SettingsFactory
 
 
 async def history_manager_node(state: ChatState) -> dict:
-    """
-    历史管理节点函数
+    """历史管理节点函数
 
     该节点负责：
     1. 从 state 中获取历史消息
@@ -42,42 +25,26 @@ async def history_manager_node(state: ChatState) -> dict:
     """
     try:
         messages = state.get("messages", [])
-        session_id = state.get("session_id", "default")
 
         # 将 LangChain 消息转换为字典格式
-        messages_dict = []
-        for msg in messages:
-            if hasattr(msg, 'type') and hasattr(msg, 'content'):
-                role = "user" if msg.type == "human" else "assistant"
-                if msg.type == "system":
-                    role = "system"
-                messages_dict.append({"role": role, "content": msg.content})
+        messages_dict = lc_messages_to_dicts(messages)
 
         # 如果消息数量较少，直接返回
-        if len(messages_dict) <= settings.MAX_HISTORY_ROUNDS * 2:
+        max_history_rounds = SettingsFactory.get(key="MAX_HISTORY_ROUNDS")
+        if len(messages_dict) <= max_history_rounds * 2:
             logger.info(f"历史消息数量 {len(messages_dict)} 未超过阈值，跳过压缩")
             return {"messages": messages}
 
         # 第一步：使用 SummaryAgent 生成摘要压缩
-        compressed_dict = await _compress_with_summary(messages_dict)
+        compressed_dict = await _compress_with_summary(state, messages_dict)
 
         # 第二步：Token长度控制
-        if settings.ENABLE_TOKEN_CONTROL:
-            compressed_dict = await _control_token_length(compressed_dict)
+        enable_token_control = SettingsFactory.get(key="ENABLE_TOKEN_CONTROL")
+        if enable_token_control:
+            compressed_dict = await _control_token_length(state, compressed_dict)
 
         # 将字典转换回 LangChain 消息
-        from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-        compressed_messages = []
-        for msg_dict in compressed_dict:
-            role = msg_dict.get("role", "user")
-            content = msg_dict.get("content", "")
-
-            if role == "user":
-                compressed_messages.append(HumanMessage(content=content))
-            elif role == "assistant":
-                compressed_messages.append(AIMessage(content=content))
-            elif role == "system":
-                compressed_messages.append(SystemMessage(content=content))
+        compressed_messages = dicts_to_lc_messages(compressed_dict)
 
         logger.info(f"历史管理完成: {len(messages)} -> {len(compressed_messages)} 条消息")
         return {"messages": compressed_messages}
@@ -88,27 +55,29 @@ async def history_manager_node(state: ChatState) -> dict:
         return {"messages": state.get("messages", [])}
 
 
-async def _compress_with_summary(messages_dict: list) -> list:
-    """
-    使用 SummaryAgent 压缩历史消息
+async def _compress_with_summary(state: ChatState, messages_dict: list) -> list:
+    """使用 SummaryAgent 压缩历史消息
 
     Args:
+        state: Graph 状态（供 SummaryAgent 构建提示词）
         messages_dict: 字典格式的消息列表
 
     Returns:
         压缩后的消息列表
     """
-    # 获取全局 SummaryAgent
-    summary_agent = get_summary_agent()
-
     # 分离旧消息和新消息
-    max_messages = settings.MAX_HISTORY_ROUNDS * 2
+    max_history_rounds = SettingsFactory.get(key="MAX_HISTORY_ROUNDS")
+    max_messages = max_history_rounds * 2
     old_messages = messages_dict[:-max_messages]
     new_messages = messages_dict[-max_messages:]
 
+    # 构建临时 state 供 SummaryAgent 使用
+    summary_state = dict(state)
+    summary_state["messages"] = old_messages
+
     # 使用 SummaryAgent 生成摘要
     logger.info(f"触发历史摘要生成: 旧消息 {len(old_messages)} 条")
-    summary = await summary_agent.summarize(old_messages)
+    summary = await SummaryAgent.summarize(summary_state)
 
     if summary:
         # 构建新的消息列表：摘要 + 最新对话
@@ -122,25 +91,24 @@ async def _compress_with_summary(messages_dict: list) -> list:
         return new_messages
 
 
-async def _control_token_length(messages_dict: list) -> list:
-    """
-    控制消息列表的token长度
+async def _control_token_length(state: ChatState, messages_dict: list) -> list:
+    """控制消息列表的token长度
 
     Args:
+        state: Graph 状态（供 SummaryAgent 构建提示词）
         messages_dict: 字典格式的消息列表
 
     Returns:
         token控制后的消息列表
     """
-    # 获取全局 SummaryAgent
-    summary_agent = get_summary_agent()
-
-    # 创建 TokenCounter，传入 SummaryAgent
-    token_counter = TokenCounter(summary_agent=summary_agent)
+    # 创建 TokenCounter，传入 state 供二次摘要使用
+    token_counter = TokenCounter(state=state)
 
     # 计算当前token数
     current_tokens = token_counter.count_message_tokens(messages_dict)
-    max_tokens = settings.MAX_CONTEXT_TOKENS - settings.RESERVE_FOR_RESPONSE
+    max_context_tokens = SettingsFactory.get(key="MAX_CONTEXT_TOKENS")
+    reserve_for_response = SettingsFactory.get(key="RESERVE_FOR_RESPONSE")
+    max_tokens = max_context_tokens - reserve_for_response
 
     logger.info(f"当前上下文token: {current_tokens}, 限制: {max_tokens}")
 

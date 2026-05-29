@@ -54,7 +54,7 @@ async def list_workspace_files(
     current_user: User = Depends(get_current_user),
 ):
     """列出工作区指定目录下的文件，支持分页"""
-    workspace = settings.file_workspace_path
+    workspace = settings.file_workspace_path(current_user.id)
     target = workspace / path if path else workspace
 
     # 安全检查
@@ -134,7 +134,7 @@ async def download_workspace_file(
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="认证失败，请先登录")
 
-    workspace = settings.file_workspace_path
+    workspace = settings.file_workspace_path(user.id)
     full_path = workspace / file_path
 
     # 安全检查：防止路径穿越
@@ -171,7 +171,7 @@ async def get_workspace_file_info(
     current_user: User = Depends(get_current_user),
 ):
     """获取工作区文件信息"""
-    workspace = settings.file_workspace_path
+    workspace = settings.file_workspace_path(current_user.id)
     full_path = workspace / file_path
 
     # 安全检查
@@ -210,7 +210,7 @@ async def delete_workspace_file(
     current_user: User = Depends(get_current_user),
 ):
     """删除工作区中的文件或目录"""
-    workspace = settings.file_workspace_path
+    workspace = settings.file_workspace_path(current_user.id)
     full_path = workspace / file_path
 
     # 安全检查：防止路径穿越

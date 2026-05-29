@@ -1,7 +1,7 @@
 """Token 使用量统计 DAO 层"""
 from typing import List, Optional
+from datetime import date, timedelta
 from sqlmodel import select, func
-from sqlalchemy import text
 from loguru import logger
 
 from app.database.engine import async_engine
@@ -13,7 +13,7 @@ class UsageStatsDao:
     """Token 使用量统计数据访问对象"""
 
     @classmethod
-    async def create_usage_stats(
+    async def upsert_usage_stats(
         cls,
         user_id: str,
         model: str,
@@ -21,7 +21,7 @@ class UsageStatsDao:
         output_tokens: int,
     ) -> UsageStatsTable:
         """
-        创建一条 Token 使用记录
+        累加 Token 使用记录：同一天 + 同一模型 + 同一用户则累加，否则新建
 
         Args:
             user_id: 用户ID
@@ -30,19 +30,104 @@ class UsageStatsDao:
             output_tokens: 输出 Token 数
 
         Returns:
-            UsageStatsTable: 创建的记录
+            UsageStatsTable: 更新或创建的记录
         """
-        record = UsageStatsTable(
-            user_id=user_id,
-            model=model,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-        )
+        today = date.today()
+
         async with AsyncSession(async_engine) as session:
-            session.add(record)
-            await session.commit()
-            await session.refresh(record)
-            return record
+            statement = select(UsageStatsTable).where(
+                UsageStatsTable.user_id == user_id,
+                UsageStatsTable.model == model,
+                UsageStatsTable.stat_date == today,
+            )
+            result = await session.execute(statement)
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                existing.input_tokens += input_tokens
+                existing.output_tokens += output_tokens
+                existing.request_count += 1
+                session.add(existing)
+                await session.commit()
+                await session.refresh(existing)
+                logger.debug(
+                    f"Token 累加: user={user_id[:8]}, model={model}, "
+                    f"+input={input_tokens}, +output={output_tokens}"
+                )
+                return existing
+            else:
+                record = UsageStatsTable(
+                    user_id=user_id,
+                    model=model,
+                    stat_date=today,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    request_count=1,
+                )
+                session.add(record)
+                await session.commit()
+                await session.refresh(record)
+                logger.debug(
+                    f"Token 新建: user={user_id[:8]}, model={model}, "
+                    f"input={input_tokens}, output={output_tokens}"
+                )
+                return record
+
+    @classmethod
+    def upsert_usage_stats_sync(
+        cls,
+        user_id: str,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+    ) -> UsageStatsTable:
+        """
+        累加 Token 使用记录（同步版本，供 Callback 使用）
+
+        同一天 + 同一模型 + 同一用户则累加，否则新建。
+        """
+        from app.database.engine import engine as sync_engine
+        from sqlmodel import Session
+
+        today = date.today()
+
+        with Session(sync_engine) as session:
+            statement = select(UsageStatsTable).where(
+                UsageStatsTable.user_id == user_id,
+                UsageStatsTable.model == model,
+                UsageStatsTable.stat_date == today,
+            )
+            existing = session.exec(statement).first()
+
+            if existing:
+                existing.input_tokens += input_tokens
+                existing.output_tokens += output_tokens
+                existing.request_count += 1
+                session.add(existing)
+                session.commit()
+                session.refresh(existing)
+                logger.debug(
+                    f"Token 累加(sync): user={user_id[:8]}, model={model}, "
+                    f"+input={input_tokens}, +output={output_tokens}"
+                )
+                return existing
+            else:
+                record = UsageStatsTable(
+                    user_id=user_id,
+                    model=model,
+                    stat_date=today,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    request_count=1,
+                )
+                session.add(record)
+                session.commit()
+                session.refresh(record)
+                logger.debug(
+                    f"Token 新建(sync): user={user_id[:8]}, model={model}, "
+                    f"input={input_tokens}, output={output_tokens}"
+                )
+                return record
 
     @classmethod
     async def get_usage_by_time_range(
@@ -62,18 +147,16 @@ class UsageStatsDao:
         Returns:
             List[UsageStatsTable]: 使用记录列表
         """
-        from datetime import datetime, timedelta
-
-        start_time = datetime.now() - timedelta(days=delta_days)
+        start_date = date.today() - timedelta(days=delta_days)
 
         async with AsyncSession(async_engine) as session:
             statement = (
                 select(UsageStatsTable)
                 .where(
                     UsageStatsTable.user_id == user_id,
-                    UsageStatsTable.create_time >= start_time,
+                    UsageStatsTable.stat_date >= start_date,
                 )
-                .order_by(UsageStatsTable.create_time.asc())
+                .order_by(UsageStatsTable.stat_date.asc())
             )
             if model:
                 statement = statement.where(UsageStatsTable.model == model)
@@ -103,50 +186,38 @@ class UsageStatsDao:
         model: Optional[str] = None,
     ) -> List[dict]:
         """
-        按日期 + 模型聚合查询 Token 使用量
+        按日期 + 模型查询 Token 使用量
 
-        在数据库层面完成聚合，避免 Python 层循环。
+        由于数据已经按天聚合存储，直接查询即可，无需再 GROUP BY。
 
         Returns:
-            List[dict]: [{"date": "2025-01-15", "model": "gpt-4", 
+            List[dict]: [{"date": "2025-01-15", "model": "gpt-4",
                           "input_tokens": 100, "output_tokens": 200, "total_tokens": 300}]
         """
-        from datetime import datetime, timedelta
-
-        start_time = datetime.now() - timedelta(days=delta_days)
+        start_date = date.today() - timedelta(days=delta_days)
 
         async with AsyncSession(async_engine) as session:
-            # 按日期 + 模型聚合
             statement = (
-                select(
-                    func.date(UsageStatsTable.create_time).label("date"),
-                    UsageStatsTable.model,
-                    func.sum(UsageStatsTable.input_tokens).label("input_tokens"),
-                    func.sum(UsageStatsTable.output_tokens).label("output_tokens"),
-                )
+                select(UsageStatsTable)
                 .where(
                     UsageStatsTable.user_id == user_id,
-                    UsageStatsTable.create_time >= start_time,
+                    UsageStatsTable.stat_date >= start_date,
                 )
-                .group_by(
-                    func.date(UsageStatsTable.create_time),
-                    UsageStatsTable.model,
-                )
-                .order_by(text("date"), UsageStatsTable.model)
+                .order_by(UsageStatsTable.stat_date, UsageStatsTable.model)
             )
             if model:
                 statement = statement.where(UsageStatsTable.model == model)
 
             result = await session.execute(statement)
-            rows = result.all()
+            rows = result.scalars().all()
 
             return [
                 {
-                    "date": str(row.date),
+                    "date": str(row.stat_date),
                     "model": row.model,
-                    "input_tokens": int(row.input_tokens or 0),
-                    "output_tokens": int(row.output_tokens or 0),
-                    "total_tokens": int((row.input_tokens or 0) + (row.output_tokens or 0)),
+                    "input_tokens": row.input_tokens,
+                    "output_tokens": row.output_tokens,
+                    "total_tokens": row.input_tokens + row.output_tokens,
                 }
                 for row in rows
             ]
@@ -159,43 +230,35 @@ class UsageStatsDao:
         model: Optional[str] = None,
     ) -> List[dict]:
         """
-        按日期 + 模型聚合查询调用次数
+        按日期 + 模型查询调用次数
+
+        由于数据已经按天聚合存储，直接查询 request_count 即可。
 
         Returns:
             List[dict]: [{"date": "2025-01-15", "model": "gpt-4", "count": 10}]
         """
-        from datetime import datetime, timedelta
-
-        start_time = datetime.now() - timedelta(days=delta_days)
+        start_date = date.today() - timedelta(days=delta_days)
 
         async with AsyncSession(async_engine) as session:
             statement = (
-                select(
-                    func.date(UsageStatsTable.create_time).label("date"),
-                    UsageStatsTable.model,
-                    func.count().label("count"),
-                )
+                select(UsageStatsTable)
                 .where(
                     UsageStatsTable.user_id == user_id,
-                    UsageStatsTable.create_time >= start_time,
+                    UsageStatsTable.stat_date >= start_date,
                 )
-                .group_by(
-                    func.date(UsageStatsTable.create_time),
-                    UsageStatsTable.model,
-                )
-                .order_by(text("date"), UsageStatsTable.model)
+                .order_by(UsageStatsTable.stat_date, UsageStatsTable.model)
             )
             if model:
                 statement = statement.where(UsageStatsTable.model == model)
 
             result = await session.execute(statement)
-            rows = result.all()
+            rows = result.scalars().all()
 
             return [
                 {
-                    "date": str(row.date),
+                    "date": str(row.stat_date),
                     "model": row.model,
-                    "count": int(row.count),
+                    "count": row.request_count,
                 }
                 for row in rows
             ]

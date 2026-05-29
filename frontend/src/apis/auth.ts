@@ -38,6 +38,8 @@ export const refreshAccessToken = async (): Promise<string> => {
     // 刷新失败，清除所有 token
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
+    localStorage.removeItem('user_role')
+    ;(window as any).__updateUserRole?.('0')
     throw error
   }
 }
@@ -129,6 +131,8 @@ export const fetchWithTokenRefresh = async (
       // 刷新失败，跳转到登录页
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
+      localStorage.removeItem('user_role')
+      ;(window as any).__updateUserRole?.('0')
       window.location.href = '/login'
       throw refreshError
     }
@@ -159,5 +163,48 @@ export const isAuthenticated = (): boolean => {
 export const logout = (): void => {
   localStorage.removeItem('access_token')
   localStorage.removeItem('refresh_token')
+  localStorage.removeItem('user_role')
+  ;(window as any).__updateUserRole?.('0')
   window.location.href = '/login'
+}
+
+/**
+ * 获取当前用户信息
+ */
+export const getUserInfo = () => {
+  return fetchWithTokenRefresh('/api/v1/auth/me', {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' }
+  }).then(res => {
+    if (!res.ok) throw new Error('获取用户信息失败')
+    return res.json()
+  })
+}
+
+/**
+ * 更新个人信息
+ */
+export const updateProfile = (data: { email?: string; nickname?: string }) => {
+  return fetchWithTokenRefresh('/api/v1/auth/profile', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(res => {
+    if (!res.ok) return res.json().then(err => { throw new Error(err.detail || '更新失败') })
+    return res.json()
+  })
+}
+
+/**
+ * 修改密码
+ */
+export const changePassword = (data: { old_password: string; new_password: string }) => {
+  return fetchWithTokenRefresh('/api/v1/auth/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(res => {
+    if (!res.ok) return res.json().then(err => { throw new Error(err.detail || '修改密码失败') })
+    return res.json()
+  })
 }

@@ -4,29 +4,7 @@ from sqlmodel import SQLModel
 from loguru import logger
 
 from app.database.engine import engine, async_engine
-from app.database.models import DialogTable, HistoryTable, KnowledgeTable, KnowledgeFileTable, User, UsageStatsTable
-from sqlalchemy import inspect, text
-
-
-def _migrate_dialog_table(engine):
-    """增量迁移：为 dialog 表添加 is_pinned、is_starred、pinned_at 列（如果不存在）"""
-    insp = inspect(engine)
-    if "dialog" not in insp.get_table_names():
-        return
-    existing_columns = {col["name"] for col in insp.get_columns("dialog")}
-    with engine.connect() as conn:
-        if "is_pinned" not in existing_columns:
-            conn.execute(text("ALTER TABLE dialog ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0"))
-            conn.commit()
-            logger.info("迁移: dialog 表添加 is_pinned 列")
-        if "is_starred" not in existing_columns:
-            conn.execute(text("ALTER TABLE dialog ADD COLUMN is_starred INTEGER NOT NULL DEFAULT 0"))
-            conn.commit()
-            logger.info("迁移: dialog 表添加 is_starred 列")
-        if "pinned_at" not in existing_columns:
-            conn.execute(text("ALTER TABLE dialog ADD COLUMN pinned_at DATETIME NULL"))
-            conn.commit()
-            logger.info("迁移: dialog 表添加 pinned_at 列")
+from app.database.models import DialogTable, HistoryTable, KnowledgeTable, KnowledgeFileTable, LLMProviderTable, User, UsageStatsTable, UserAgentTable, UserSetting
 
 
 async def init_db():
@@ -41,9 +19,6 @@ async def init_db():
             logger.info("开始创建数据库表...")
             SQLModel.metadata.create_all(engine)
             logger.info("数据库表创建成功")
-
-            # 增量迁移：为已有表添加新列
-            _migrate_dialog_table(engine)
 
             # 列出创建的表
             tables = SQLModel.metadata.tables.keys()

@@ -10,8 +10,11 @@ from app.schemas.auth import (
     UserLogin,
     TokenResponse,
     UserInfo,
-    RefreshTokenRequest
+    RefreshTokenRequest,
+    UpdateProfile,
+    ChangePassword
 )
+
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 security = HTTPBearer(auto_error=False)
@@ -108,3 +111,50 @@ async def get_current_user(
         return await auth_service.get_current_user(credentials.credentials)
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+
+@router.put("/profile", response_model=UserInfo, summary="更新个人信息")
+async def update_profile(
+    profile_data: UpdateProfile,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    更新当前用户个人信息（邮箱、昵称）
+    """
+    auth_service = AuthService(session)
+    try:
+        user = await auth_service.get_current_user(credentials.credentials)
+        # get_current_user 返回 UserInfo，需要重新查询 ORM 对象
+        from app.database.dao.user_dao import UserDAO
+        user_obj = await UserDAO.get_user_by_id(session, user.id)
+        if not user_obj:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        return await auth_service.update_profile(user_obj, profile_data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/change-password", summary="修改密码")
+async def change_password(
+    password_data: ChangePassword,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """
+    修改当前用户密码
+    """
+    auth_service = AuthService(session)
+    try:
+        user = await auth_service.get_current_user(credentials.credentials)
+        from app.database.dao.user_dao import UserDAO
+        user_obj = await UserDAO.get_user_by_id(session, user.id)
+        if not user_obj:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        return await auth_service.change_password(user_obj, password_data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

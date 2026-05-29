@@ -1,11 +1,21 @@
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { NodeEvent } from '../../apis/chat'
-import type { NodeTraceInfo } from '../../components/WorkflowGraph.vue'
+import type { NodeTraceInfo, UserAgentNodeInfo } from '../../components/WorkflowGraph.vue'
 
 export function useChatWorkflow() {
   const showWorkflowPanel = ref(false)
   const nodeTraces = ref<Record<string, NodeTraceInfo>>({})
   const workflowTotalMs = ref<number>(0)
+
+  // 从 nodeTraces 中自动提取用户自建 Agent 节点（user_ 前缀）
+  const userAgentNodes = computed<UserAgentNodeInfo[]>(() => {
+    return Object.values(nodeTraces.value)
+      .filter(trace => trace.node.startsWith('user_'))
+      .map(trace => ({
+        name: trace.node,
+        display_name: trace.display_name,
+      }))
+  })
 
   function handleNodeEvent(event: NodeEvent) {
     if (event.type === 'node_start' && event.node) {
@@ -47,6 +57,7 @@ export function useChatWorkflow() {
     showWorkflowPanel,
     nodeTraces,
     workflowTotalMs,
+    userAgentNodes,
     handleNodeEvent,
     resetWorkflow,
   }

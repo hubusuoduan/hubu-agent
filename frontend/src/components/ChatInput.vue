@@ -76,7 +76,7 @@
         <div class="input-actions">
           <div class="action-left">
             <el-select
-              :model-value="currentModelId"
+              :model-value="modelList.find(m => m.enable)?.id"
               @update:model-value="$emit('switchModel', $event)"
               placeholder="选择模型"
               size="small"
@@ -89,7 +89,7 @@
               <el-option
                 v-for="model in modelList"
                 :key="model.id"
-                :label="model.name"
+                :label="model.model"
                 :value="model.id"
               />
             </el-select>
@@ -125,8 +125,7 @@ defineProps<{
   sending: boolean
   isGenerating: boolean
   uploadedFiles: Array<{ file: File; content: string }>
-  modelList: Array<{ id: string; name: string }>
-  currentModelId: string
+  modelList: Array<{ id: number; model: string; enable: boolean }>
   isDeleteMode: boolean
   selectedCount: number
 }>()
@@ -137,7 +136,7 @@ const emit = defineEmits<{
   clearFile: []
   removeFile: [index: number]
   fileChange: [file: any]
-  switchModel: [modelId: string]
+  switchModel: [modelId: number]
   confirmDelete: []
   cancelDelete: []
   selectAll: []

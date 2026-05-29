@@ -94,6 +94,7 @@ backend/reports/
 backend/output/
 backend/*.db
 backend/*.sqlite
+backend/skills/
 
 # Frontend specific
 frontend/node_modules/

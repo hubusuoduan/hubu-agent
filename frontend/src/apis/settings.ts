@@ -3,7 +3,7 @@ import request from './request'
 /** 配置项信息 */
 export interface SettingItem {
   key: string
-  type: 'int' | 'float' | 'bool'
+  type: 'int' | 'float' | 'bool' | 'str'
   group: string
   desc: string
   default_value: any

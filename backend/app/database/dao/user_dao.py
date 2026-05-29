@@ -60,6 +60,25 @@ class UserDAO:
         return result.first()
     
     @staticmethod
+    async def get_users_by_ids(session: AsyncSession, user_ids: List[int]) -> dict:
+        """
+        根据ID列表批量获取用户，返回 {id: username} 映射
+
+        Args:
+            session: 数据库会话
+            user_ids: 用户ID列表
+
+        Returns:
+            {user_id: username} 字典
+        """
+        if not user_ids:
+            return {}
+        statement = select(User).where(User.id.in_(user_ids))
+        result = await session.exec(statement)
+        users = result.all()
+        return {u.id: u.username for u in users}
+
+    @staticmethod
     async def create_user(session: AsyncSession, user: User) -> User:
         """
         创建用户

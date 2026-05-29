@@ -1,6 +1,7 @@
 
 <template>
-  <div :class="['workflow-node', data.status]">
+  <div :class="['workflow-node', data.status, { 'background-node': data.isBackground, 'user-agent-node': data.isUserAgent }]">
+    <div v-if="data.isBackground" class="node-bg-badge">{{ data.bgLabel || '后台异步' }}</div>
     <div class="node-header">
       <span class="node-icon">{{ data.icon }}</span>
       <span class="node-label">{{ data.label }}</span>
@@ -47,6 +48,8 @@ defineProps<{
     input_summary?: string
     output_summary?: string
     error?: string
+    isBackground?: boolean
+    bgLabel?: string
   }
 }>()
 
@@ -86,6 +89,79 @@ const expanded = ref(false)
   border-color: #ef4444;
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
   background: #fef2f2;
+}
+
+/* 后台异步节点样式 */
+.workflow-node.background-node {
+  border-style: dashed;
+  border-color: #c4b5fd;
+  background: #faf5ff;
+}
+
+.workflow-node.background-node.pending {
+  border-color: #c4b5fd;
+  opacity: 0.6;
+}
+
+.workflow-node.background-node.running {
+  border-color: #8b5cf6;
+  border-style: dashed;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12), 0 2px 8px rgba(139, 92, 246, 0.08);
+  background: #f5f3ff;
+}
+
+.workflow-node.background-node.completed {
+  border-color: #8b5cf6;
+  border-style: dashed;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.08);
+  background: #faf5ff;
+}
+
+.workflow-node.background-node.error {
+  border-color: #ef4444;
+  border-style: dashed;
+}
+
+/* 用户自建 Agent 节点样式 */
+.workflow-node.user-agent-node {
+  border-color: #22c55e;
+  background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
+}
+
+.workflow-node.user-agent-node.pending {
+  border-color: #86efac;
+  opacity: 0.55;
+}
+
+.workflow-node.user-agent-node.running {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15), 0 2px 8px rgba(34, 197, 94, 0.12);
+  background: #f0fdf4;
+}
+
+.workflow-node.user-agent-node.completed {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.1);
+  background: #f0fdf4;
+}
+
+.workflow-node.user-agent-node.error {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+  background: #fef2f2;
+}
+
+.node-bg-badge {
+  font-size: 10px;
+  color: #7c3aed;
+  background: #ede9fe;
+  border: 1px solid #c4b5fd;
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-bottom: 4px;
+  text-align: center;
+  font-weight: 600;
+  letter-spacing: 0.5px;
 }
 
 .node-header {

@@ -6,6 +6,7 @@ from loguru import logger
 from pymilvus import MilvusClient, DataType
 
 from app.config import settings
+from app.services.settings_service import SettingsFactory
 from app.services.rag.embedding import get_embedding
 
 
@@ -107,7 +108,7 @@ class MemoryService:
             # 搜索参数
             search_params = {
                 "metric_type": "L2",
-                "params": {"nprobe": settings.MILVUS_NPROBE}
+                "params": {"nprobe": SettingsFactory.get(key="MILVUS_NPROBE")}
             }
 
             # 执行搜索，按 user_id 过滤
@@ -228,7 +229,7 @@ class MemoryService:
 
             search_params = {
                 "metric_type": "L2",
-                "params": {"nprobe": settings.MILVUS_NPROBE}
+                "params": {"nprobe": SettingsFactory.get(key="MILVUS_NPROBE")}
             }
 
             results = self.client.search(
@@ -290,7 +291,7 @@ class MemoryService:
 
     async def list_memories(
         self,
-        user_id: str,
+        user_id: Optional[str] = None,
         limit: int = 20,
         offset: int = 0,
         keyword: str = "",
@@ -299,7 +300,7 @@ class MemoryService:
         """列出用户记忆（支持分页和搜索）
 
         Args:
-            user_id: 用户ID
+            user_id: 用户ID，为None时不过滤用户（管理员查看所有）
             limit: 每页数量
             offset: 偏移量
             keyword: 搜索关键词（模糊匹配内容）
@@ -310,16 +311,18 @@ class MemoryService:
         """
         try:
             # 构建过滤条件
-            filters = [f'user_id == {user_id}']
+            filters = []
+            if user_id is not None:
+                filters.append(f'user_id == {user_id}')
             if memory_type and memory_type in ("preference", "fact", "insight"):
                 filters.append(f'memory_type == "{memory_type}"')
 
-            filter_expr = " and ".join(filters)
+            filter_expr = " and ".join(filters) if filters else ""
 
             # 先查总数
             count_results = self.client.query(
                 collection_name=self.COLLECTION_NAME,
-                filter=filter_expr,
+                filter=filter_expr or "id >= 0",
                 output_fields=["count(*)"]
             )
             total = count_results[0].get("count(*)", 0) if count_results else 0
@@ -327,8 +330,8 @@ class MemoryService:
             # 查询分页数据
             results = self.client.query(
                 collection_name=self.COLLECTION_NAME,
-                filter=filter_expr,
-                output_fields=["memory_id", "content", "memory_type", "source_dialog_id", "created_at", "importance"],
+                filter=filter_expr or "id >= 0",
+                output_fields=["memory_id", "user_id", "content", "memory_type", "source_dialog_id", "created_at", "importance"],
                 limit=offset + limit,
                 sort_fields=["created_at"]
             )

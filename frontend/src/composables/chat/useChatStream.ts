@@ -374,6 +374,24 @@ export function useChatStream() {
     }
   }
 
+  // 保存正在生成中的消息（页面卸载/路由离开时调用）
+  function saveInProgressMessage() {
+    if (!isGenerating.value) return
+    const lastMsg = messages.value[messages.value.length - 1]
+    if (lastMsg && lastMsg.role === 'ai' && lastMsg.content.trim() && dialogId.value) {
+      // 取消流式请求
+      cancelStreamMessage()
+      // 保存已接收的内容
+      saveTruncatedMessage(dialogId.value, lastMsg.content).catch((e) => {
+        console.error('保存中断消息失败:', e)
+      })
+      // 重置状态
+      sending.value = false
+      isGenerating.value = false
+      currentAiMessageIndex.value = -1
+    }
+  }
+
   // 重新生成最后一条AI消息
   async function regenerateMessage(
     aiMessageIndex: number,
@@ -490,6 +508,7 @@ export function useChatStream() {
     loadDialogHistory,
     sendMessage,
     stopGeneration,
+    saveInProgressMessage,
     regenerateMessage,
     handleLogout,
   }

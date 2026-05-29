@@ -16,6 +16,12 @@ router = APIRouter(prefix="/logs", tags=["日志查看"])
 LOG_DIR = BACKEND_DIR / "logs"
 
 
+def _require_admin(user: User):
+    """校验管理员权限，非管理员返回403"""
+    if user.role != 1:
+        raise HTTPException(status_code=403, detail="仅管理员可访问日志")
+
+
 @router.get("/list", summary="列出日志文件（分页）")
 async def list_log_files(
     path: str = "",
@@ -23,7 +29,8 @@ async def list_log_files(
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     current_user: User = Depends(get_current_user),
 ):
-    """列出日志目录下的文件，支持分页"""
+    """列出日志目录下的文件，支持分页（仅管理员）"""
+    _require_admin(current_user)
     target = LOG_DIR / path if path else LOG_DIR
 
     # 安全检查：防止路径穿越
@@ -81,7 +88,8 @@ async def read_log_file(
     tail: int = Query(500, ge=1, le=5000, description="读取最后N行"),
     current_user: User = Depends(get_current_user),
 ):
-    """读取日志文件内容，默认返回最后500行"""
+    """读取日志文件内容，默认返回最后500行（仅管理员）"""
+    _require_admin(current_user)
     full_path = LOG_DIR / file_path
 
     # 安全检查：防止路径穿越
@@ -126,7 +134,8 @@ async def delete_log_file(
     file_path: str,
     current_user: User = Depends(get_current_user),
 ):
-    """删除日志文件（不允许删除目录）"""
+    """删除日志文件（不允许删除目录，仅管理员）"""
+    _require_admin(current_user)
     full_path = LOG_DIR / file_path
 
     # 安全检查

@@ -47,6 +47,7 @@ dependencies = [
     "pdf2docx (>=0.5.8,<1.0.0)",  # PDF转Word
     "python-docx (>=1.1.0,<2.0.0)",  # Word文档处理
     "matplotlib>=3.7.0,<4.0.0",  # 图表生成
+    "defusedxml (>=0.7.1,<0.8.0)",
 ]
 
 

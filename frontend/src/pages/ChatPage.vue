@@ -60,7 +60,7 @@
       :is-generating="isGenerating"
       :uploaded-files="uploadedFiles"
       :model-list="modelList"
-      :current-model-id="currentModelId"
+
       :is-delete-mode="isDeleteMode"
       :selected-count="selectedMessageIds.size"
       @send-message="sendMessage"
@@ -79,6 +79,7 @@
       :visible="showWorkflowPanel"
       :node-traces="nodeTraces"
       :total-duration-ms="workflowTotalMs"
+      :user-agents="userAgentNodes"
       @close="showWorkflowPanel = false"
       @open="showWorkflowPanel = true"
     />
@@ -93,8 +94,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useRoute, onBeforeRouteLeave } from 'vue-router'
 import { Delete, Loading, SwitchButton, Plus, Download } from '@element-plus/icons-vue'
 import ChatMessage from '../components/ChatMessage.vue'
 import ChatInput from '../components/ChatInput.vue'
@@ -126,6 +127,7 @@ const {
   showWorkflowPanel,
   nodeTraces,
   workflowTotalMs,
+  userAgentNodes,
   currentThinkingStep,
   getWelcomeMessage,
   toggleThinking,
@@ -135,6 +137,7 @@ const {
   loadDialogHistory,
   sendMessage,
   stopGeneration,
+  saveInProgressMessage,
   handleFileChange,
   clearFile,
   removeFile,
@@ -146,7 +149,6 @@ const {
   confirmBatchDelete,
   regenerateMessage,
   modelList,
-  currentModelId,
   loadModels,
   handleSwitchModel,
 } = useChat()
@@ -180,9 +182,25 @@ watch(
   { immediate: true }
 )
 
+// 页面卸载前保存正在生成的消息
+function _handleBeforeUnload() {
+  saveInProgressMessage()
+}
+
+// 路由离开前保存正在生成的消息
+onBeforeRouteLeave(() => {
+  saveInProgressMessage()
+  return true
+})
+
 onMounted(() => {
   scrollToBottom()
   loadModels()
+  window.addEventListener('beforeunload', _handleBeforeUnload)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', _handleBeforeUnload)
 })
 
 // 暴露方法给父组件（侧边栏对话列表切换用）

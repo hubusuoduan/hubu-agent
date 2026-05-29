@@ -26,7 +26,7 @@
           <span v-if="totalDurationMs > 0" class="workflow-total-time">总耗时: {{ totalDurationMs }}ms</span>
         </div>
         <div class="workflow-sidebar-body">
-          <WorkflowGraph :node-traces="nodeTraces" :total-duration-ms="totalDurationMs" />
+          <WorkflowGraph :node-traces="nodeTraces" :total-duration-ms="totalDurationMs" :user-agents="userAgents" />
         </div>
       </div>
     </transition>
@@ -36,12 +36,13 @@
 <script setup lang="ts">
 import { View, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import WorkflowGraph from './WorkflowGraph.vue'
-import type { NodeTraceInfo } from './WorkflowGraph.vue'
+import type { NodeTraceInfo, UserAgentNodeInfo } from './WorkflowGraph.vue'
 
 defineProps<{
   visible: boolean
   nodeTraces: Record<string, NodeTraceInfo>
   totalDurationMs: number
+  userAgents?: UserAgentNodeInfo[]
 }>()
 
 defineEmits<{

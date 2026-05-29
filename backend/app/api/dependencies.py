@@ -107,3 +107,23 @@ async def get_current_user_optional(
         
     except Exception:
         return None
+
+
+async def require_admin(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """
+    要求管理员权限
+
+    Args:
+        current_user: 当前用户（通过 get_current_user 依赖注入）
+
+    Returns:
+        当前用户对象
+
+    Raises:
+        HTTPException: 非管理员时抛出 403
+    """
+    if current_user.role != 1:
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    return current_user

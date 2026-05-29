@@ -6,6 +6,7 @@ from typing import Optional, List
 class MemoryResponse(BaseModel):
     """记忆响应"""
     memory_id: str
+    user_id: Optional[int] = None
     content: str
     memory_type: str
     source_dialog_id: Optional[str] = ""

@@ -14,7 +14,7 @@ from app.auth.exceptions import (
     UserAlreadyExistsError,
     InvalidTokenError
 )
-from app.schemas.auth import UserRegister, UserLogin, TokenResponse, UserInfo
+from app.schemas.auth import UserRegister, UserLogin, TokenResponse, UserInfo, UpdateProfile, ChangePassword
 
 # 密码加密上下文
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -82,11 +82,16 @@ class AuthService:
             username=user_data.username,
             password_hash=self._hash_password(user_data.password),
             email=user_data.email,
-            nickname=user_data.nickname
+            nickname=user_data.nickname,
+            role=0  # 普通用户，管理员需手动在数据库中设置
         )
         
         created_user = await UserDAO.create_user(self.session, new_user)
-        logger.info(f"用户注册成功: {created_user.username}")
+        logger.info(f"用户注册成功: {created_user.username}" + (" (管理员)" if created_user.role == 1 else ""))
+
+        # 初始化用户默认配置
+        from app.services.settings_service import SettingsService
+        await SettingsService.init_user_settings(created_user.id)
         
         return UserInfo(
             id=created_user.id,
@@ -94,6 +99,7 @@ class AuthService:
             email=created_user.email,
             nickname=created_user.nickname,
             avatar=created_user.avatar,
+            role=created_user.role,
             is_active=created_user.is_active
         )
     
@@ -209,5 +215,70 @@ class AuthService:
             email=user.email,
             nickname=user.nickname,
             avatar=user.avatar,
+            role=user.role,
             is_active=user.is_active
         )
+
+    async def update_profile(self, user: User, profile_data: UpdateProfile) -> UserInfo:
+        """
+        更新用户个人信息
+
+        Args:
+            user: 当前用户对象
+            profile_data: 更新信息
+
+        Returns:
+            更新后的用户信息
+
+        Raises:
+            UserAlreadyExistsError: 邮箱已被其他用户使用
+        """
+        # 检查邮箱是否被其他用户占用
+        if profile_data.email and profile_data.email != user.email:
+            existing_email = await UserDAO.get_user_by_email(self.session, profile_data.email)
+            if existing_email and existing_email.id != user.id:
+                raise UserAlreadyExistsError(f"邮箱 {profile_data.email} 已被其他用户使用")
+
+        # 更新字段
+        if profile_data.email is not None:
+            user.email = profile_data.email
+        if profile_data.nickname is not None:
+            user.nickname = profile_data.nickname
+
+        updated_user = await UserDAO.update_user(self.session, user)
+        logger.info(f"用户信息更新成功: {updated_user.username}")
+
+        return UserInfo(
+            id=updated_user.id,
+            username=updated_user.username,
+            email=updated_user.email,
+            nickname=updated_user.nickname,
+            avatar=updated_user.avatar,
+            role=updated_user.role,
+            is_active=updated_user.is_active
+        )
+
+    async def change_password(self, user: User, password_data: ChangePassword) -> dict:
+        """
+        修改用户密码
+
+        Args:
+            user: 当前用户对象
+            password_data: 密码修改数据
+
+        Returns:
+            成功消息
+
+        Raises:
+            InvalidCredentialsError: 旧密码错误
+        """
+        # 验证旧密码
+        if not self._verify_password(password_data.old_password, user.password_hash):
+            raise InvalidCredentialsError("旧密码错误")
+
+        # 更新密码
+        user.password_hash = self._hash_password(password_data.new_password)
+        await UserDAO.update_user(self.session, user)
+        logger.info(f"用户密码修改成功: {user.username}")
+
+        return {"message": "密码修改成功"}
